@@ -1,0 +1,57 @@
+syntax = "proto3";
+
+package skyeye;
+
+message PersistentPingTask {
+  uint64 task_id = 1;
+  uint32 interval_ms = 2;
+  uint32 timeout_ms =3;
+  string target = 4;
+  uint32 count = 5;
+  oneof source {
+    string port = 6;
+    string ip = 7;
+  }
+}
+
+message PersistentPingResult {
+  uint64 task_id = 1;
+  uint32 count = 2;
+  uint32 loss = 3;
+  repeated float rtts = 4;
+}
+
+message CancelPersistentTask {
+  uint64 task_id = 1;
+}
+
+message ControllerMessage {
+  oneof payload {
+    PersistentPingTask persistent_ping_task = 1;
+    CancelPersistentTask cancel_persistent_task = 2;
+  }
+}
+
+message Register {
+  string agent_id = 1;
+  string version = 2;
+  uint64 capabilities = 3;
+  string hostname = 4;
+  map<string, string> interface_ipaddr = 5;
+}
+
+message Heartbeat {
+  uint64 timestamp = 1;
+}
+
+message AgentMessage {
+  oneof payload {
+    Register register = 1;
+    Heartbeat heartbeat = 2;
+    PersistentPingResult persistent_ping_result = 3;
+  }
+}
+
+service ManagementService {
+  rpc Stream(stream AgentMessage) returns (stream ControllerMessage);
+}
