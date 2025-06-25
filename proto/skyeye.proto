@@ -18,7 +18,7 @@ message PersistentPingResult {
   uint64 task_id = 1;
   uint32 count = 2;
   uint32 loss = 3;
-  repeated float rtts = 4;
+  repeated float rtt_ms = 4;
 }
 
 message CancelPersistentTask {
