@@ -1,8 +1,9 @@
 syntax = "proto3";
 
 package skyeye;
+option go_package = "./;pb";
 
-message PersistentPingTask {
+message ContinuousPingTask {
   uint64 task_id = 1;
   uint32 interval_ms = 2;
   uint32 timeout_ms =3;
@@ -14,21 +15,21 @@ message PersistentPingTask {
   }
 }
 
-message PersistentPingResult {
+message ContinuousPingResult {
   uint64 task_id = 1;
   uint32 count = 2;
   uint32 loss = 3;
-  repeated float rtt_ms = 4;
+  repeated uint64 rtt_nano = 4;
 }
 
-message CancelPersistentTask {
+message CancelContinuousTask {
   uint64 task_id = 1;
 }
 
 message ControllerMessage {
   oneof payload {
-    PersistentPingTask persistent_ping_task = 1;
-    CancelPersistentTask cancel_persistent_task = 2;
+    ContinuousPingTask continuous_ping_task = 1;
+    CancelContinuousTask cancel_continuous_task = 2;
   }
 }
 
@@ -48,7 +49,7 @@ message AgentMessage {
   oneof payload {
     Register register = 1;
     Heartbeat heartbeat = 2;
-    PersistentPingResult persistent_ping_result = 3;
+    ContinuousPingResult continuous_ping_result = 3;
   }
 }
 
