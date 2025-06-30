@@ -106,9 +106,10 @@ func (p *Ping) probeAndSend() {
 	msg := &pb.AgentMessage{
 		Payload: &pb.AgentMessage_ContinuousPingResult{
 			ContinuousPingResult: &pb.ContinuousPingResult{
-				TaskId: p.taskID,
-				Count:  p.count,
-				Loss:   result.loss,
+				TaskId:  p.taskID,
+				Count:   p.count,
+				Loss:    result.loss,
+				RttNano: result.rttNano,
 			},
 		},
 	}

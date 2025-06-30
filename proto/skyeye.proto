@@ -19,7 +19,7 @@ message ContinuousPingResult {
   uint64 task_id = 1;
   uint32 count = 2;
   uint32 loss = 3;
-  repeated uint64 rtt_nano = 4;
+  repeated int64 rtt_nano = 4;
 }
 
 message CancelContinuousTask {
