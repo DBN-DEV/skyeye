@@ -1,0 +1,131 @@
+// Licensed to the LF AI & Data foundation under one
+// or more contributor license agreements. See the NOTICE file
+// distributed with this work for additional information
+// regarding copyright ownership. The ASF licenses this file
+// to you under the Apache License, Version 2.0 (the
+// "License"); you may not use this file except in compliance
+// with the License. You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+// Copyright 2019 PingCAP, Inc.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+package log
+
+import (
+	"errors"
+	"fmt"
+	"os"
+	"sync/atomic"
+
+	"github.com/uber/jaeger-client-go/utils"
+	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
+	"gopkg.in/natefinch/lumberjack.v2"
+)
+
+var _globalL, _globalP, _globalS, _globalR atomic.Value
+var rateLimiter *utils.ReconfigurableRateLimiter
+
+func init() {
+	l, p := newStdLogger()
+	_globalL.Store(l)
+	_globalP.Store(p)
+	s := _globalL.Load().(*zap.Logger).Sugar()
+	_globalS.Store(s)
+
+	r := utils.NewRateLimiter(1.0, 60.0)
+	_globalR.Store(r)
+}
+
+// InitLogger initializes a zap logger.
+func InitLogger(cfg *Config, opts ...zap.Option) (*zap.Logger, *ZapProperties, error) {
+	outputs := make([]zapcore.WriteSyncer, 0)
+	if len(cfg.File.Filename) > 0 {
+		lg, err := initFileLog(&cfg.File)
+		if err != nil {
+			return nil, nil, err
+		}
+		outputs = append(outputs, zapcore.AddSync(lg))
+	}
+	if cfg.Console {
+		stdOut := zapcore.AddSync(os.Stdout)
+		outputs = append(outputs, stdOut)
+	}
+	writer := zap.CombineWriteSyncers(outputs...)
+	return InitLoggerWithWriteSyncer(cfg, writer, opts...)
+}
+
+// InitLoggerWithWriteSyncer initializes a zap logger with specified  write syncer.
+func InitLoggerWithWriteSyncer(cfg *Config, output zapcore.WriteSyncer, opts ...zap.Option) (*zap.Logger, *ZapProperties, error) {
+	level := zap.NewAtomicLevel()
+	err := level.UnmarshalText([]byte(cfg.Level))
+	if err != nil {
+		return nil, nil, fmt.Errorf("initLoggerWithWriteSyncer UnmarshalText cfg.Level err:%w", err)
+	}
+	core := NewTextCore(newZapTextEncoder(cfg), output, level)
+	opts = append(cfg.buildOptions(output), opts...)
+	lg := zap.New(core, opts...)
+	r := &ZapProperties{
+		Core:   core,
+		Syncer: output,
+		Level:  level,
+	}
+	return lg, r, nil
+}
+
+// initFileLog initializes file based logging options.
+func initFileLog(cfg *FileLogConfig) (*lumberjack.Logger, error) {
+	if st, err := os.Stat(cfg.Filename); err == nil {
+		if st.IsDir() {
+			return nil, errors.New("can't use directory as log file name")
+		}
+	}
+	if cfg.MaxSize == 0 {
+		cfg.MaxSize = defaultLogMaxSize
+	}
+
+	// use lumberjack to logrotate
+	return &lumberjack.Logger{
+		Filename:   cfg.Filename,
+		MaxSize:    cfg.MaxSize,
+		MaxBackups: cfg.MaxBackups,
+		MaxAge:     cfg.MaxDays,
+		LocalTime:  true,
+	}, nil
+}
+
+func newStdLogger() (*zap.Logger, *ZapProperties) {
+	conf := &Config{Level: "info", File: FileLogConfig{}}
+	lg, r, _ := InitLogger(conf, zap.AddCallerSkip(1))
+	return lg, r
+}
+
+// L returns the global Logger, which can be reconfigured with ReplaceGlobals.
+// It's safe for concurrent use.
+func L() *zap.Logger {
+	return _globalL.Load().(*zap.Logger)
+}
+
+// S returns the global SugaredLogger, which can be reconfigured with
+// ReplaceGlobals. It's safe for concurrent use.
+func S() *zap.SugaredLogger {
+	return _globalS.Load().(*zap.SugaredLogger)
+}

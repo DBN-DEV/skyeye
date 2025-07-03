@@ -3,7 +3,7 @@ package probe
 import (
 	"errors"
 	"fmt"
-	"github.com/DBN-DEV/skyeye/pb"
+	"github.com/DBN-DEV/skyeye/pkg/log"
 	"math"
 	"net"
 	"net/netip"
@@ -11,13 +11,16 @@ import (
 	"sync"
 	"time"
 
+	"github.com/bits-and-blooms/bitset"
 	"go.uber.org/zap"
 	"golang.org/x/net/icmp"
 	"golang.org/x/net/ipv4"
 	"golang.org/x/net/ipv6"
 
-	"github.com/bits-and-blooms/bitset"
+	"github.com/DBN-DEV/skyeye/pb"
 )
+
+var _globalAlloc = newIdAlloc()
 
 type idAlloc struct {
 	mu sync.Mutex
@@ -69,10 +72,36 @@ type Ping struct {
 	timeout  time.Duration
 	interval time.Duration
 
-	resultCh chan *pb.AgentMessage
+	resultCh chan<- *pb.AgentMessage
 	stopCh   chan struct{}
 
 	logger *zap.Logger
+}
+
+func NewContinuousPingTask(msg *pb.ContinuousPingTask, resultCh chan<- *pb.AgentMessage) (*Ping, error) {
+	dest, err := netip.ParseAddr(msg.GetDestination())
+	if err != nil {
+		return nil, fmt.Errorf("ping: parse destination: %w", err)
+	}
+
+	network := "udp4"
+	if dest.Is6() {
+		network = "udp6"
+	}
+
+	return &Ping{
+		idAlloc:  _globalAlloc,
+		taskID:   msg.GetTaskId(),
+		network:  network,
+		src:      msg.GetIp(), // can not support port for now
+		dst:      dest,
+		count:    msg.GetCount(),
+		timeout:  time.Duration(msg.GetTimeoutMs()) * time.Millisecond,
+		interval: time.Duration(msg.GetIntervalMs()) * time.Millisecond,
+		resultCh: resultCh,
+		stopCh:   make(chan struct{}),
+		logger:   log.With(zap.Uint64("task_id", msg.GetTaskId())),
+	}, nil
 }
 
 type pingResult struct {
@@ -82,7 +111,7 @@ type pingResult struct {
 
 func (p *Ping) Cancel() { close(p.stopCh) }
 
-func (p *Ping) runLoop() {
+func (p *Ping) Run() {
 	ticker := time.NewTicker(p.interval)
 	defer ticker.Stop()
 

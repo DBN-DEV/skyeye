@@ -7,7 +7,7 @@ message ContinuousPingTask {
   uint64 task_id = 1;
   uint32 interval_ms = 2;
   uint32 timeout_ms =3;
-  string target = 4;
+  string destination = 4;
   uint32 count = 5;
   oneof source {
     string port = 6;
