@@ -166,7 +166,7 @@ func (p *Ping) probeOne(id, seq uint16, conn net.PacketConn) (time.Duration, boo
 	}
 
 	for {
-		_, peer, err := conn.ReadFrom(nil)
+		_, peer, err := conn.ReadFrom(make([]byte, 1))
 		if err != nil && errors.Is(err, os.ErrDeadlineExceeded) {
 			return 0, true, nil
 		}
