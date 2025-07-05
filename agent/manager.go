@@ -1,10 +1,12 @@
 package agent
 
 import (
+	"sync"
+
+	"go.uber.org/zap"
+
 	"github.com/DBN-DEV/skyeye/agent/probe"
 	"github.com/DBN-DEV/skyeye/pb"
-	"go.uber.org/zap"
-	"sync"
 )
 
 type manager struct {
@@ -45,6 +47,8 @@ func (m *manager) dispatchCtrlMsg(msg *pb.ControllerMessage) {
 	switch msg.GetPayload().(type) {
 	case *pb.ControllerMessage_ContinuousPingTask:
 		m.runContinuousPingTask(msg.GetContinuousPingTask())
+	case *pb.ControllerMessage_CancelContinuousTask:
+		m.cancelContinuousTask(msg.GetCancelContinuousTask())
 	default:
 		m.logger.Error("invalid ctrl message", zap.Any("msg", msg))
 	}
@@ -62,4 +66,14 @@ func (m *manager) runContinuousPingTask(msg *pb.ContinuousPingTask) {
 	m.probeMu.mu.Unlock()
 
 	go p.Run()
+}
+
+func (m *manager) cancelContinuousTask(msg *pb.CancelContinuousTask) {
+	m.probeMu.mu.Lock()
+	defer m.probeMu.mu.Unlock()
+
+	if p, ok := m.probeMu.probes[msg.GetTaskId()]; ok {
+		p.Cancel()
+		delete(m.probeMu.probes, msg.GetTaskId())
+	}
 }
