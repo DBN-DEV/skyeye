@@ -3,65 +3,21 @@ package probe
 import (
 	"errors"
 	"fmt"
-	"github.com/DBN-DEV/skyeye/pkg/log"
-	"math"
 	"net"
 	"net/netip"
 	"os"
-	"sync"
 	"time"
 
-	"github.com/bits-and-blooms/bitset"
 	"go.uber.org/zap"
 	"golang.org/x/net/icmp"
 	"golang.org/x/net/ipv4"
 	"golang.org/x/net/ipv6"
 
 	"github.com/DBN-DEV/skyeye/pb"
+	"github.com/DBN-DEV/skyeye/pkg/log"
 )
 
-var _globalAlloc = newIdAlloc()
-
-type idAlloc struct {
-	mu sync.Mutex
-
-	lastId uint16
-	idSet  *bitset.BitSet
-}
-
-func newIdAlloc() *idAlloc {
-	return &idAlloc{idSet: bitset.New(uint(math.MaxUint16))}
-}
-
-func (alloc *idAlloc) alloc() (uint16, error) {
-	alloc.mu.Lock()
-	defer alloc.mu.Unlock()
-
-	// First try to find an ID starting from lastId
-	id, ok := alloc.idSet.NextClear(uint(alloc.lastId))
-	if !ok {
-		// If not found, try from the beginning (0)
-		id, ok = alloc.idSet.NextClear(0)
-		if !ok {
-			return 0, errors.New("all ids are used")
-		}
-	}
-
-	alloc.lastId = uint16(id)
-	alloc.idSet.Set(id)
-	return uint16(id), nil
-}
-
-func (alloc *idAlloc) free(id uint16) {
-	alloc.mu.Lock()
-	defer alloc.mu.Unlock()
-
-	alloc.idSet.Clear(uint(id))
-}
-
 type Ping struct {
-	idAlloc *idAlloc
-
 	taskID uint64
 
 	network string
@@ -90,7 +46,6 @@ func NewContinuousPingTask(msg *pb.ContinuousPingTask, resultCh chan<- *pb.Agent
 	}
 
 	return &Ping{
-		idAlloc:  _globalAlloc,
 		taskID:   msg.GetTaskId(),
 		network:  network,
 		src:      msg.GetIp(), // can not support port for now
@@ -152,15 +107,9 @@ func (p *Ping) probe() (pingResult, error) {
 		return pingResult{}, fmt.Errorf("ping: listen packet: %w", err)
 	}
 
-	id, err := p.idAlloc.alloc()
-	if err != nil {
-		return pingResult{}, fmt.Errorf("ping: alloc id: %w", err)
-	}
-	defer p.idAlloc.free(id)
-
 	var result pingResult
 	for i := uint32(1); i <= p.count; i++ {
-		rtt, loss, err := p.probeOne(id, uint16(i), conn)
+		rtt, loss, err := p.probeOne(uint16(i), conn)
 		if err != nil {
 			return pingResult{}, fmt.Errorf("ping: probe one: %w", err)
 		}
@@ -176,8 +125,8 @@ func (p *Ping) probe() (pingResult, error) {
 	return result, nil
 }
 
-func (p *Ping) probeOne(id, seq uint16, conn net.PacketConn) (time.Duration, bool, error) {
-	pkt := p.newPkt(id, seq)
+func (p *Ping) probeOne(seq uint16, conn net.PacketConn) (time.Duration, bool, error) {
+	pkt := p.newPkt(seq)
 	byts, err := pkt.Marshal(nil)
 	if err != nil {
 		return 0, false, fmt.Errorf("ping: marshal packet: %w", err)
@@ -212,9 +161,8 @@ func (p *Ping) probeOne(id, seq uint16, conn net.PacketConn) (time.Duration, boo
 	}
 }
 
-func (p *Ping) newPkt(id, seq uint16) *icmp.Message {
+func (p *Ping) newPkt(seq uint16) *icmp.Message {
 	echo := &icmp.Echo{
-		ID:   int(id),
 		Seq:  int(seq),
 		Data: []byte("123456789"),
 	}
