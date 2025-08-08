@@ -3,33 +3,38 @@ syntax = "proto3";
 package skyeye;
 option go_package = "./;pb";
 
-message ContinuousPingTask {
-  uint64 task_id = 1;
-  uint32 interval_ms = 2;
-  uint32 timeout_ms =3;
-  string destination = 4;
+message IP {
+  bytes slice = 1;
+}
+
+message ContinuousPingJob {
+  uint64 jobId = 1;
+  uint32 intervalMs = 2;
+  uint32 timeoutMs =3;
+  repeated IP destinations = 4;
   uint32 count = 5;
   oneof source {
     string port = 6;
-    string ip = 7;
+    IP ip = 7;
   }
 }
 
 message ContinuousPingResult {
   uint64 task_id = 1;
-  uint32 count = 2;
-  uint32 loss = 3;
-  repeated int64 rtt_nano = 4;
+  IP destination = 2;
+  uint32 count = 3;
+  uint32 loss = 4;
+  repeated int64 rtt_nano = 5;
 }
 
-message CancelContinuousTask {
-  uint64 task_id = 1;
+message CancelContinuousJob {
+  uint64 taskId = 1;
 }
 
 message ControllerMessage {
   oneof payload {
-    ContinuousPingTask continuous_ping_task = 1;
-    CancelContinuousTask cancel_continuous_task = 2;
+    CancelContinuousJob cancel_job = 1;
+    ContinuousPingJob continuous_ping_job = 2;
   }
 }
 
@@ -38,7 +43,7 @@ message Register {
   string version = 2;
   uint64 capabilities = 3;
   string hostname = 4;
-  map<string, string> interface_ipaddr = 5;
+  map<string, IP> interface_ipaddr = 5;
 }
 
 message Heartbeat {
