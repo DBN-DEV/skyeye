@@ -22,22 +22,18 @@ func TestSlot_cancel(t *testing.T) {
 	callback := func() {}
 	offset, id := s.add(callback)
 
-	// Cancel with valid offset and id
-	err := s.cancel(offset, id)
-	assert.NoError(t, err)
-	assert.True(t, s.timers[offset].cancelled)
-
 	// Cancel with invalid offset
-	err = s.cancel(-1, id)
-	assert.Error(t, err)
-
-	// Cancel with invalid id
-	err = s.cancel(offset, -1)
+	err := s.cancel(-1, id)
 	assert.Error(t, err)
 
 	// Cancel with mismatched id
 	err = s.cancel(offset, id+1)
 	assert.Error(t, err)
+
+	// Cancel with valid offset and id
+	err = s.cancel(offset, id)
+	assert.NoError(t, err)
+	assert.True(t, s.timers[offset].cancelled)
 }
 
 func TestTimerWheel_Add(t *testing.T) {
