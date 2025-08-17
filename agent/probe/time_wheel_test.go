@@ -3,6 +3,7 @@ package probe
 import (
 	"encoding/binary"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/stretchr/testify/assert"
@@ -36,6 +37,27 @@ func TestSlot_cancel(t *testing.T) {
 	assert.True(t, s.timers[offset].cancelled)
 }
 
+func TestSlot_execute(t *testing.T) {
+	s := &slot{}
+	var executed bool
+	callback := func() { executed = true }
+	s.add(callback)
+
+	// Execute should call the callback
+	s.execute()
+	assert.True(t, executed)
+
+	// Add another timer and cancel it
+	executed = false
+	offset, id := s.add(callback)
+	err := s.cancel(offset, id)
+	assert.NoError(t, err)
+
+	// Execute should not call the cancelled callback
+	s.execute()
+	assert.False(t, executed)
+}
+
 func TestTimerWheel_Add(t *testing.T) {
 	tw := &timerWheel{
 		tick:  time.Millisecond,
@@ -58,9 +80,9 @@ func TestTimerWheel_Add(t *testing.T) {
 	assert.Len(t, buf, 24)                      // 8 bytes for slotNum, 8bytes for id, 8 bytes for offset
 	assert.Equal(t, 1, len(tw.slots[5].timers)) // One timer should be added to slot 5
 	// slotNum should be 5, offset should be 0, id should eq to the timer's id
-	assert.Equal(t, uint64(5), binary.BigEndian.Uint64(buf[0:8]))
-	assert.Equal(t, uint64(0), binary.BigEndian.Uint64(buf[8:16]))
-	assert.Equal(t, uint64(tw.slots[5].timers[0].id), binary.BigEndian.Uint64(buf[16:24]))
+	assert.Equal(t, uint64(5), binary.LittleEndian.Uint64(buf[0:8]))
+	assert.Equal(t, uint64(0), binary.LittleEndian.Uint64(buf[8:16]))
+	assert.Equal(t, uint64(tw.slots[5].timers[0].id), binary.LittleEndian.Uint64(buf[16:24]))
 }
 
 func TestTimerWheel_Cancel(t *testing.T) {
@@ -80,9 +102,9 @@ func TestTimerWheel_Cancel(t *testing.T) {
 	assert.Error(t, err)
 
 	// Cancel with valid id but no timer exists
-	binary.BigEndian.PutUint64(id[0:8], 0)   // Valid slot number
-	binary.BigEndian.PutUint64(id[8:16], 0)  // Valid offset
-	binary.BigEndian.PutUint64(id[16:24], 1) // Non-existing timer ID
+	binary.LittleEndian.PutUint64(id[0:8], 0)   // Valid slot number
+	binary.LittleEndian.PutUint64(id[8:16], 0)  // Valid offset
+	binary.LittleEndian.PutUint64(id[16:24], 1) // Non-existing timer ID
 	err = tw.Cancel(id)
 	assert.Error(t, err)
 
@@ -92,4 +114,19 @@ func TestTimerWheel_Cancel(t *testing.T) {
 	err = tw.Cancel(buf)
 	assert.NoError(t, err)
 	assert.True(t, tw.slots[5].timers[0].cancelled)
+}
+
+func TestTimerWheel_run(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		tw := newTimerWheel(time.Second, 10)
+		var executed bool
+		callback := func() { executed = true }
+		tw.slots[1].add(callback)
+
+		go tw.run()
+		time.Sleep(10 * time.Second)
+		tw.Stop()
+
+		assert.True(t, executed)
+	})
 }

@@ -12,10 +12,9 @@ message ContinuousPingJob {
   uint32 intervalMs = 2;
   uint32 timeoutMs =3;
   repeated IP destinations = 4;
-  uint32 count = 5;
   oneof source {
-    string port = 6;
-    IP ip = 7;
+    string port = 5;
+    IP ip = 6;
   }
 }
 

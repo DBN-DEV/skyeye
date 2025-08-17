@@ -46,12 +46,40 @@ func (s *slot) cancel(offset int, id int) error {
 	return nil
 }
 
+func (s *slot) execute() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	for i := range s.timers {
+		if s.timers[i].cancelled {
+			continue
+		}
+
+		s.timers[i].callback()
+	}
+
+	s.timers = s.timers[:0]
+}
+
 type timerWheel struct {
-	ticker time.Ticker
+	ticker *time.Ticker
+	stop   chan struct{}
 
 	tick    time.Duration
 	current atomic.Int64
 	slots   []slot
+}
+
+func newTimerWheel(tick time.Duration, slotNum int) *timerWheel {
+	tw := &timerWheel{
+		ticker: time.NewTicker(tick),
+		tick:   tick,
+		slots:  make([]slot, slotNum),
+		stop:   make(chan struct{}),
+	}
+
+	go tw.run()
+	return tw
 }
 
 func (tw *timerWheel) Add(delay time.Duration, callback func()) ([]byte, error) {
@@ -71,9 +99,9 @@ func (tw *timerWheel) Add(delay time.Duration, callback func()) ([]byte, error) 
 
 	// slotNum 8 bytes, id 8 bytes, offset 8 bytes
 	buf := make([]byte, 8*3)
-	binary.BigEndian.PutUint64(buf[0:8], uint64(slotNum))
-	binary.BigEndian.PutUint64(buf[8:16], uint64(offset))
-	binary.BigEndian.PutUint64(buf[16:24], uint64(id))
+	binary.LittleEndian.PutUint64(buf[0:8], uint64(slotNum))
+	binary.LittleEndian.PutUint64(buf[8:16], uint64(offset))
+	binary.LittleEndian.PutUint64(buf[16:24], uint64(id))
 
 	return buf, nil
 }
@@ -83,13 +111,36 @@ func (tw *timerWheel) Cancel(id []byte) error {
 		return errors.New("probe: invalid id length")
 	}
 
-	slotNum := binary.BigEndian.Uint64(id[0:8])
-	offset := binary.BigEndian.Uint64(id[8:16])
-	timerID := binary.BigEndian.Uint64(id[16:24])
+	slotNum := binary.LittleEndian.Uint64(id[0:8])
+	offset := binary.LittleEndian.Uint64(id[8:16])
+	timerID := binary.LittleEndian.Uint64(id[16:24])
 
 	if int(slotNum) < 0 || int(slotNum) >= len(tw.slots) {
 		return errors.New("probe: slot number out of range")
 	}
 
 	return tw.slots[slotNum].cancel(int(offset), int(timerID))
+}
+
+func (tw *timerWheel) Stop() {
+	if tw.ticker != nil {
+		tw.ticker.Stop()
+	}
+	close(tw.stop)
+}
+
+func (tw *timerWheel) run() {
+	for {
+		select {
+		case <-tw.ticker.C:
+			next := tw.current.Add(1)
+			slotNum := tw.current.Load() % int64(len(tw.slots))
+			tw.slots[slotNum].execute()
+			if next >= int64(len(tw.slots)) {
+				tw.current.Store(0) // Reset current to 0 if it exceeds the number of slots
+			}
+		case <-tw.stop:
+			return
+		}
+	}
 }
