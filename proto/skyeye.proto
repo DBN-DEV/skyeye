@@ -8,9 +8,9 @@ message IP {
 }
 
 message ContinuousPingJob {
-  uint64 jobId = 1;
-  uint32 intervalMs = 2;
-  uint32 timeoutMs =3;
+  uint64 job_id = 1;
+  uint32 interval_ms = 2;
+  uint32 timeout_ms =3;
   repeated IP destinations = 4;
   oneof source {
     string port = 5;
@@ -19,7 +19,7 @@ message ContinuousPingJob {
 }
 
 message ContinuousPingResult {
-  uint64 task_id = 1;
+  uint64 job_id = 1;
   IP destination = 2;
   uint32 count = 3;
   uint32 loss = 4;
@@ -27,7 +27,7 @@ message ContinuousPingResult {
 }
 
 message CancelContinuousJob {
-  uint64 taskId = 1;
+  uint64 job_id = 1;
 }
 
 message ControllerMessage {
