@@ -9,6 +9,8 @@ import (
 	"time"
 )
 
+const idLen = 24 // slotNum 8 bytes, id 8 bytes, offset 8 bytes
+
 type timer struct {
 	id        int
 	cancelled bool
