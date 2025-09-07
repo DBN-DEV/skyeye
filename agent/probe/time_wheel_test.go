@@ -59,30 +59,94 @@ func TestSlot_execute(t *testing.T) {
 }
 
 func TestTimerWheel_Add(t *testing.T) {
-	tw := &timerWheel{
-		tick:  time.Millisecond,
-		slots: make([]slot, 10),
+	type TestCase struct {
+		name             string
+		twSlots          int
+		twCurrentSlot    int
+		twTick           time.Duration
+		paramsDelay      time.Duration
+		expectedSlotNum  int
+		expectedOffset   int
+		expectedError    bool
+		expectedErrorMsg string
+	}
+	tcs := []TestCase{
+		{
+			name:             "Add with negative delay",
+			twSlots:          10,
+			twCurrentSlot:    0,
+			twTick:           time.Millisecond,
+			paramsDelay:      -time.Millisecond,
+			expectedError:    true,
+			expectedErrorMsg: "probe: delay must be greater than zero",
+		},
+		{
+			name:             "Add with zero delay",
+			twSlots:          10,
+			twCurrentSlot:    0,
+			twTick:           time.Millisecond,
+			paramsDelay:      0,
+			expectedError:    true,
+			expectedErrorMsg: "probe: delay must be greater than zero",
+		},
+		{
+			name:             "Add with delay exceeds timer wheel capacity",
+			twSlots:          10,
+			twCurrentSlot:    0,
+			twTick:           time.Millisecond,
+			paramsDelay:      9 * time.Millisecond,
+			expectedSlotNum:  0,
+			expectedOffset:   0,
+			expectedError:    true,
+			expectedErrorMsg: "probe: delay exceeds timer wheel capacity",
+		},
+		{
+			name:            "Add with up bound valid delay",
+			twSlots:         10,
+			twCurrentSlot:   0,
+			twTick:          time.Millisecond,
+			paramsDelay:     9*time.Millisecond - time.Nanosecond,
+			expectedSlotNum: 8,
+			expectedOffset:  0,
+			expectedError:   false,
+		},
+		{
+			name:            "Add with down bound valid delay",
+			twSlots:         10,
+			twCurrentSlot:   0,
+			twTick:          time.Millisecond,
+			paramsDelay:     time.Nanosecond,
+			expectedSlotNum: 0,
+			expectedOffset:  0,
+			expectedError:   false,
+		},
 	}
 
-	// delay <= 0
-	_, err := tw.Add(0, func() {})
-	assert.Error(t, err)
-	_, err = tw.Add(-time.Millisecond, func() {})
-	assert.Error(t, err)
+	for _, tc := range tcs {
+		t.Run(tc.name, func(t *testing.T) {
+			tw := &timerWheel{
+				tick:  tc.twTick,
+				slots: make([]slot, tc.twSlots),
+			}
+			tw.current.Store(int64(tc.twCurrentSlot))
 
-	// delay exceeds timer wheel capacity
-	_, err = tw.Add(11*time.Millisecond, func() {})
-	assert.Error(t, err)
+			id, err := tw.Add(tc.paramsDelay, func() {})
 
-	// valid delay
-	buf, err := tw.Add(5*time.Millisecond, func() {})
-	assert.NoError(t, err)
-	assert.Len(t, buf, 24)                      // 8 bytes for slotNum, 8bytes for id, 8 bytes for offset
-	assert.Equal(t, 1, len(tw.slots[5].timers)) // One timer should be added to slot 5
-	// slotNum should be 5, offset should be 0, id should eq to the timer's id
-	assert.Equal(t, uint64(5), binary.LittleEndian.Uint64(buf[0:8]))
-	assert.Equal(t, uint64(0), binary.LittleEndian.Uint64(buf[8:16]))
-	assert.Equal(t, uint64(tw.slots[5].timers[0].id), binary.LittleEndian.Uint64(buf[16:24]))
+			if tc.expectedError {
+				if err == nil {
+					t.Fatal("expected error, but got nil")
+				}
+				assert.Equal(t, tc.expectedErrorMsg, err.Error())
+			} else {
+				if err != nil {
+					t.Fatal("expected no error, but got:", err)
+				}
+				assert.Len(t, id, 24) // 8 bytes for slotNum, 8bytes for id, 8 bytes for offset
+				assert.Equal(t, tc.expectedSlotNum, id.SlotNum())
+				assert.Equal(t, tc.expectedOffset, id.Offset())
+			}
+		})
+	}
 }
 
 func TestTimerWheel_Cancel(t *testing.T) {
@@ -117,16 +181,65 @@ func TestTimerWheel_Cancel(t *testing.T) {
 }
 
 func TestTimerWheel_run(t *testing.T) {
-	synctest.Test(t, func(t *testing.T) {
-		tw := newTimerWheel(time.Second, 10)
-		var executed bool
-		callback := func() { executed = true }
-		tw.slots[1].add(callback)
+	type TestCase struct {
+		name     string
+		twSlots  int
+		twTick   time.Duration
+		jobSlot  int
+		sleep    time.Duration
+		executed bool
+	}
+	tcs := []TestCase{
+		{
+			name:     "job will executed",
+			twSlots:  10,
+			twTick:   time.Second,
+			jobSlot:  5,
+			sleep:    10 * time.Second,
+			executed: true,
+		},
+		{
+			name:     "job will not executed",
+			twSlots:  10,
+			twTick:   time.Second,
+			jobSlot:  5,
+			sleep:    1 * time.Second,
+			executed: false,
+		},
+		{
+			name:     "job will executed just now",
+			twSlots:  10,
+			twTick:   time.Second,
+			jobSlot:  1,
+			sleep:    2*time.Second + time.Millisecond,
+			executed: true,
+		},
+		{
+			name:     "Job almost executed",
+			twSlots:  10,
+			twTick:   time.Second,
+			jobSlot:  1,
+			sleep:    2*time.Second - time.Millisecond,
+			executed: false,
+		},
+	}
 
-		go tw.run()
-		time.Sleep(10 * time.Second)
-		tw.Stop()
+	for _, tc := range tcs {
+		t.Run(tc.name, func(t *testing.T) {
+			synctest.Test(t, func(t *testing.T) {
+				tw := newTimerWheel(tc.twTick, tc.twSlots)
+				var executed bool
+				callback := func() { executed = true }
+				tw.slots[tc.jobSlot].add(callback)
 
-		assert.True(t, executed)
-	})
+				go tw.run()
+				time.Sleep(tc.sleep)
+				tw.Stop()
+
+				if executed != tc.executed {
+					t.Fatalf("expected executed: %v, but got: %v", tc.executed, executed)
+				}
+			})
+		})
+	}
 }
