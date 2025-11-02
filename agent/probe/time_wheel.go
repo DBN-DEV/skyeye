@@ -9,7 +9,7 @@ import (
 	"time"
 )
 
-const idLen = 24 // slotNum 8 bytes, id 8 bytes, offset 8 bytes
+const _idLen = 24 // slotNum 8 bytes, id 8 bytes, offset 8 bytes
 
 type timer struct {
 	id        int
@@ -66,11 +66,11 @@ func (s *slot) execute() {
 type timeWheelID []byte
 
 func newTimeWheelID(slotNum int, offset int, timerID int) timeWheelID {
-	buf := make([]byte, 8*3)
+	buf := make([]byte, _idLen)
 	binary.LittleEndian.PutUint64(buf[0:8], uint64(slotNum))
 	binary.LittleEndian.PutUint64(buf[8:16], uint64(offset))
 	binary.LittleEndian.PutUint64(buf[16:24], uint64(timerID))
-	return timeWheelID(buf)
+	return buf
 }
 
 func (id timeWheelID) SlotNum() int {

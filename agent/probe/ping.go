@@ -93,8 +93,14 @@ func (p *PingJob) send(conn net.PacketConn) {
 			continue
 		}
 
-		data := marshalData(time.Now(), id)
-		pkt := p.newPkt(dst, data)
+		pl := &payload{Time: time.Now(), ID: id}
+		plBytes, err := pl.marshal()
+		if err != nil {
+			p.logger.Error("failed to marshal payload", zap.Error(err))
+			_ = p.timeWheel.Cancel(id)
+			continue
+		}
+		pkt := p.newPkt(dst, plBytes)
 		b, err := pkt.Marshal(nil)
 		if err != nil {
 			p.logger.Error("failed to marshal icmp packet", zap.Error(err))
@@ -111,10 +117,34 @@ func (p *PingJob) send(conn net.PacketConn) {
 	}
 }
 
-func marshalData(time time.Time, id []byte) []byte {
-	data := make([]byte, 0, idLen+8) // 8 bytes for time
-	data = append(binary.LittleEndian.AppendUint64(data, uint64(time.UnixNano())), id...)
-	return data
+const _payloadLen = _idLen + 8 // 8 bytes for time
+
+type payload struct {
+	Time time.Time
+	ID   []byte
+}
+
+func (p *payload) marshal() ([]byte, error) {
+	if len(p.ID) != _idLen {
+		return nil, fmt.Errorf("probe: invalid id length: %d", len(p.ID))
+	}
+
+	data := make([]byte, 0, _payloadLen)
+	data = append(binary.LittleEndian.AppendUint64(data, uint64(p.Time.UnixNano())), p.ID...)
+	return data, nil
+}
+
+func marshalPayload(data []byte) (*payload, error) {
+	if len(data) != _payloadLen {
+		return nil, fmt.Errorf("probe: invalid payload length: %d", len(data))
+	}
+
+	nano := int64(binary.LittleEndian.Uint64(data[:8]))
+
+	t := time.Unix(0, nano)
+	id := data[8 : 8+_idLen]
+
+	return &payload{Time: t, ID: id}, nil
 }
 
 func (p *PingJob) newPkt(dst netip.Addr, data []byte) *icmp.Message {
