@@ -117,6 +117,65 @@ func (p *PingJob) send(conn net.PacketConn) {
 	}
 }
 
+func (p *PingJob) recv(conn net.PacketConn) {
+	buf := make([]byte, 1500)
+	n, addr, err := conn.ReadFrom(buf)
+	if err != nil {
+		p.logger.Error("failed to read icmp packet", zap.Error(err))
+		return
+	}
+
+	ip, ok := netip.AddrFromSlice(addr.(*net.UDPAddr).IP)
+	if !ok {
+		p.logger.Error("failed to parse source ip from addr", zap.Any("addr", addr))
+		return
+	}
+	proto := ipv4.ICMPTypeEcho.Protocol()
+	if ip.Is6() {
+		proto = ipv6.ICMPTypeEchoRequest.Protocol()
+	}
+
+	msg, err := icmp.ParseMessage(proto, buf[:n])
+	if err != nil {
+		p.logger.Error("failed to parse icmp message", zap.Error(err))
+		return
+	}
+
+	if msg.Type != ipv4.ICMPTypeEchoReply && msg.Type != ipv6.ICMPTypeEchoReply {
+		p.logger.Warn("received non-echo-reply icmp message", zap.Any("type", msg.Type))
+		return
+	}
+
+	echo, ok := msg.Body.(*icmp.Echo)
+	if !ok {
+		p.logger.Error("failed to cast icmp message body to echo")
+		return
+	}
+
+	pl, err := unmarshalPayload(echo.Data)
+	if err != nil {
+		p.logger.Error("failed to unmarshal payload", zap.Error(err))
+		return
+	}
+
+	err = p.timeWheel.Cancel(pl.ID)
+	if err != nil {
+		p.logger.Error("failed to cancel timeout timer", zap.Error(err))
+		return
+	}
+
+	rtt := time.Since(pl.Time)
+	p.resultCh <- &pb.AgentMessage{
+		Payload: &pb.AgentMessage_ContinuousPingResult{ContinuousPingResult: &pb.ContinuousPingResult{
+			JobId:       p.jobID,
+			Destination: &pb.IP{Slice: ip.AsSlice()},
+			Count:       1,
+			Loss:        0,
+			RttNano:     []int64{rtt.Nanoseconds()},
+		}},
+	}
+}
+
 const _payloadLen = _idLen + 8 // 8 bytes for time
 
 type payload struct {
@@ -134,7 +193,7 @@ func (p *payload) marshal() ([]byte, error) {
 	return data, nil
 }
 
-func marshalPayload(data []byte) (*payload, error) {
+func unmarshalPayload(data []byte) (*payload, error) {
 	if len(data) != _payloadLen {
 		return nil, fmt.Errorf("probe: invalid payload length: %d", len(data))
 	}
