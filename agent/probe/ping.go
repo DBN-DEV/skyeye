@@ -100,7 +100,7 @@ func (p *PingJob) send(conn net.PacketConn) {
 			_ = p.timeWheel.Cancel(id)
 			continue
 		}
-		pkt := p.newPkt(dst, plBytes)
+		pkt := newPkt(dst, plBytes)
 		b, err := pkt.Marshal(nil)
 		if err != nil {
 			p.logger.Error("failed to marshal icmp packet", zap.Error(err))
@@ -117,6 +117,29 @@ func (p *PingJob) send(conn net.PacketConn) {
 	}
 }
 
+func parsePkt(src netip.Addr, data []byte) ([]byte, error) {
+	proto := ipv4.ICMPTypeEcho.Protocol()
+	if src.Is6() {
+		proto = ipv6.ICMPTypeEchoRequest.Protocol()
+	}
+
+	msg, err := icmp.ParseMessage(proto, data)
+	if err != nil {
+		return nil, fmt.Errorf("probe: parse icmp message: %w", err)
+	}
+
+	if msg.Type != ipv4.ICMPTypeEchoReply && msg.Type != ipv6.ICMPTypeEchoReply {
+		return nil, fmt.Errorf("probe: invalid icmp message type: %v", msg.Type)
+	}
+
+	echo, ok := msg.Body.(*icmp.Echo)
+	if !ok {
+		return nil, fmt.Errorf("probe: invalid icmp echo body, got %T", msg.Body)
+	}
+
+	return echo.Data, nil
+}
+
 func (p *PingJob) recv(conn net.PacketConn) {
 	buf := make([]byte, 1500)
 	n, addr, err := conn.ReadFrom(buf)
@@ -125,34 +148,19 @@ func (p *PingJob) recv(conn net.PacketConn) {
 		return
 	}
 
-	ip, ok := netip.AddrFromSlice(addr.(*net.UDPAddr).IP)
+	ipAddr, ok := netip.AddrFromSlice(addr.(*net.UDPAddr).IP)
 	if !ok {
-		p.logger.Error("failed to parse source ip from addr", zap.Any("addr", addr))
+		p.logger.Error("failed to parse source address", zap.String("addr", addr.String()))
 		return
 	}
-	proto := ipv4.ICMPTypeEcho.Protocol()
-	if ip.Is6() {
-		proto = ipv6.ICMPTypeEchoRequest.Protocol()
-	}
 
-	msg, err := icmp.ParseMessage(proto, buf[:n])
+	data, err := parsePkt(ipAddr, buf[:n])
 	if err != nil {
-		p.logger.Error("failed to parse icmp message", zap.Error(err))
+		p.logger.Error("failed to parse icmp packet", zap.Error(err))
 		return
 	}
 
-	if msg.Type != ipv4.ICMPTypeEchoReply && msg.Type != ipv6.ICMPTypeEchoReply {
-		p.logger.Warn("received non-echo-reply icmp message", zap.Any("type", msg.Type))
-		return
-	}
-
-	echo, ok := msg.Body.(*icmp.Echo)
-	if !ok {
-		p.logger.Error("failed to cast icmp message body to echo")
-		return
-	}
-
-	pl, err := unmarshalPayload(echo.Data)
+	pl, err := unmarshalPayload(data)
 	if err != nil {
 		p.logger.Error("failed to unmarshal payload", zap.Error(err))
 		return
@@ -168,7 +176,7 @@ func (p *PingJob) recv(conn net.PacketConn) {
 	p.resultCh <- &pb.AgentMessage{
 		Payload: &pb.AgentMessage_ContinuousPingResult{ContinuousPingResult: &pb.ContinuousPingResult{
 			JobId:       p.jobID,
-			Destination: &pb.IP{Slice: ip.AsSlice()},
+			Destination: &pb.IP{Slice: ipAddr.AsSlice()},
 			Count:       1,
 			Loss:        0,
 			RttNano:     []int64{rtt.Nanoseconds()},
@@ -206,7 +214,7 @@ func unmarshalPayload(data []byte) (*payload, error) {
 	return &payload{Time: t, ID: id}, nil
 }
 
-func (p *PingJob) newPkt(dst netip.Addr, data []byte) *icmp.Message {
+func newPkt(dst netip.Addr, data []byte) *icmp.Message {
 	echo := &icmp.Echo{Seq: rand.Int(), Data: data}
 
 	typ := icmp.Type(ipv4.ICMPTypeEcho)
