@@ -1,18 +1,14 @@
 package probe
 
 import (
-	"net"
 	"net/netip"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/assert"
-	"go.uber.org/zap"
 	"golang.org/x/net/icmp"
 	"golang.org/x/net/ipv4"
 	"golang.org/x/net/ipv6"
-
-	"github.com/DBN-DEV/skyeye/pb"
 )
 
 var (
@@ -36,7 +32,8 @@ func TestPayload(t *testing.T) {
 
 func TestParsePkt(t *testing.T) {
 	t.Run("ipv4", func(t *testing.T) {
-		pkt := newPkt(_ipv4Loopback, []byte("testpayload"))
+		body := &icmp.Echo{Seq: 1, Data: []byte("testpayload")}
+		pkt := &icmp.Message{Type: ipv4.ICMPTypeEchoReply, Code: 0, Body: body}
 		data, err := pkt.Marshal(nil)
 		assert.NoError(t, err)
 
@@ -46,7 +43,8 @@ func TestParsePkt(t *testing.T) {
 	})
 
 	t.Run("ipv6", func(t *testing.T) {
-		pkt := newPkt(_ipv6Loopback, []byte("testpayload"))
+		body := &icmp.Echo{Seq: 1, Data: []byte("testpayload")}
+		pkt := &icmp.Message{Type: ipv6.ICMPTypeEchoReply, Code: 0, Body: body}
 		data, err := pkt.Marshal(nil)
 		assert.NoError(t, err)
 
@@ -82,31 +80,4 @@ func TestNewPkt(t *testing.T) {
 		assert.True(t, ok)
 		assert.Equal(t, []byte("testpayload"), echo.Data)
 	})
-}
-
-func TestPingJob_recv(t *testing.T) {
-	conn, err := icmp.ListenPacket("udp4", "0.0.0.0")
-	assert.NoError(t, err)
-
-	defer conn.Close()
-
-	pkt := newPkt(_ipv4Loopback, []byte("test payload"))
-	data, err := pkt.Marshal(nil)
-	assert.NoError(t, err)
-
-	_, err = conn.WriteTo(data, &net.UDPAddr{IP: netip.MustParseAddr("1.1.1.1").AsSlice()})
-	assert.NoError(t, err)
-
-	resultCh := make(chan *pb.AgentMessage, 1)
-
-	pingJob := &PingJob{
-		logger:    zap.NewNop(),
-		timeWheel: newTimerWheel(1*time.Second, 60),
-		timeout:   2 * time.Second,
-		resultCh:  resultCh,
-	}
-
-	go pingJob.recv(conn)
-
-	time.Sleep(500 * time.Second)
 }
