@@ -3,10 +3,12 @@ package probe
 import (
 	"context"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"math/rand"
 	"net"
 	"net/netip"
+	"sync"
 	"time"
 
 	"go.uber.org/zap"
@@ -18,6 +20,8 @@ import (
 	"github.com/DBN-DEV/skyeye/pb"
 	"github.com/DBN-DEV/skyeye/pkg/log"
 )
+
+var _ ContinuousTask = (*PingJob)(nil)
 
 type PingJob struct {
 	jobID uint64
@@ -35,6 +39,8 @@ type PingJob struct {
 
 	logger *zap.Logger
 }
+
+func (p *PingJob) Cancel() { close(p.stopCh) }
 
 func NewContinuousPingTask(msg *pb.ContinuousPingJob, resultCh chan<- *pb.AgentMessage) (*PingJob, error) {
 	dests := make([]netip.Addr, 0, len(msg.Destinations))
@@ -79,7 +85,91 @@ func (p *PingJob) timeoutFn(dst netip.Addr) func() {
 	}
 }
 
-func (p *PingJob) send(conn net.PacketConn) {
+func (p *PingJob) Run() {
+	for {
+		select {
+		case <-p.stopCh:
+			return
+		default:
+			if err := p.run(); err != nil {
+				p.logger.Error("ping job run failed", zap.Error(err))
+			}
+		}
+	}
+}
+
+func (p *PingJob) run() error {
+	conn, err := newPktConn()
+	if err != nil {
+		return fmt.Errorf("ping job: create packet conn: %w", err)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+
+	var wg sync.WaitGroup
+	wg.Go(func() { p.loopRecv(ctx, conn.ipv4) })
+	wg.Go(func() { p.loopRecv(ctx, conn.ipv6) })
+
+	p.send(conn)
+
+	go func() {
+		select {
+		case <-p.stopCh:
+		case <-time.After(p.timeout):
+		}
+
+		cancel()
+
+		wg.Wait()
+		if err := conn.Close(); err != nil {
+			p.logger.Error("ping job: close packet conn", zap.Error(err))
+		}
+	}()
+
+	return nil
+}
+
+type pktConn struct {
+	ipv4 net.PacketConn
+	ipv6 net.PacketConn
+}
+
+func (p pktConn) WriteTo(b []byte, addr netip.Addr) (int, error) {
+	if addr.Is4() {
+		return p.ipv4.WriteTo(b, &net.UDPAddr{IP: addr.AsSlice()})
+	}
+
+	return p.ipv6.WriteTo(b, &net.UDPAddr{IP: addr.AsSlice()})
+}
+
+func (p pktConn) Close() error {
+	var err error
+	if e := p.ipv4.Close(); e != nil {
+		errors.Join(err, e)
+	}
+
+	if e := p.ipv6.Close(); e != nil {
+		errors.Join(err, e)
+	}
+
+	return err
+}
+
+func newPktConn() (pktConn, error) {
+	ipv4Conn, err := icmp.ListenPacket("udp4", "0.0.0.0")
+	if err != nil {
+		return pktConn{}, fmt.Errorf("probe: listen ipv4 icmp packet: %w", err)
+	}
+
+	ipv6Conn, err := icmp.ListenPacket("udp6", "::")
+	if err != nil {
+		return pktConn{}, fmt.Errorf("probe: listen ipv6 icmp packet: %w", err)
+	}
+
+	return pktConn{ipv4: ipv4Conn, ipv6: ipv6Conn}, nil
+}
+
+func (p *PingJob) send(conn pktConn) {
 	for _, dst := range p.dsts {
 		if err := p.limiter.Wait(context.Background()); err != nil {
 			p.logger.Warn("ping job stopped", zap.Error(err))
@@ -108,7 +198,7 @@ func (p *PingJob) send(conn net.PacketConn) {
 			continue
 		}
 
-		_, err = conn.WriteTo(b, &net.UDPAddr{IP: dst.AsSlice()})
+		_, err = conn.WriteTo(b, dst)
 		if err != nil {
 			p.logger.Error("failed to send icmp packet", zap.Error(err))
 			_ = p.timeWheel.Cancel(id)
@@ -140,39 +230,41 @@ func parsePkt(src netip.Addr, data []byte) ([]byte, error) {
 	return echo.Data, nil
 }
 
-func (p *PingJob) recv(conn net.PacketConn) {
+func (p *PingJob) recv(conn net.PacketConn) error {
 	buf := make([]byte, 1500)
+	if err := conn.SetReadDeadline(time.Now().Add(p.timeout)); err != nil {
+		return fmt.Errorf("probe: set read deadline: %w", err)
+	}
+
 	n, addr, err := conn.ReadFrom(buf)
 	if err != nil {
-		p.logger.Error("failed to read icmp packet", zap.Error(err))
-		return
+		return fmt.Errorf("probe: read from conn: %w", err)
 	}
 
 	ipAddr, ok := netip.AddrFromSlice(addr.(*net.UDPAddr).IP)
 	if !ok {
-		p.logger.Error("failed to parse source address", zap.String("addr", addr.String()))
-		return
+		return fmt.Errorf("probe: invalid source address %s", addr.String())
 	}
 
 	data, err := parsePkt(ipAddr, buf[:n])
 	if err != nil {
-		p.logger.Error("failed to parse icmp packet", zap.Error(err))
-		return
+		return fmt.Errorf("probe: parse packet: %w", err)
 	}
 
 	pl, err := unmarshalPayload(data)
 	if err != nil {
-		p.logger.Error("failed to unmarshal payload", zap.Error(err))
-		return
+		return fmt.Errorf("probe: unmarshal payload: %w", err)
 	}
 
-	err = p.timeWheel.Cancel(pl.ID)
-	if err != nil {
-		p.logger.Error("failed to cancel timeout timer", zap.Error(err))
-		return
+	if err := p.timeWheel.Cancel(pl.ID); err != nil {
+		return fmt.Errorf("probe: cancel timeout timer: %w", err)
 	}
 
 	rtt := time.Since(pl.Time)
+	if rtt > p.timeout {
+		return fmt.Errorf("probe: %s rtt %s exceeds timeout %s", ipAddr.String(), rtt, p.timeout)
+	}
+
 	p.resultCh <- &pb.AgentMessage{
 		Payload: &pb.AgentMessage_ContinuousPingResult{ContinuousPingResult: &pb.ContinuousPingResult{
 			JobId:       p.jobID,
@@ -181,6 +273,21 @@ func (p *PingJob) recv(conn net.PacketConn) {
 			Loss:        0,
 			RttNano:     []int64{rtt.Nanoseconds()},
 		}},
+	}
+
+	return nil
+}
+
+func (p *PingJob) loopRecv(ctx context.Context, conn net.PacketConn) {
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		default:
+			if err := p.recv(conn); err != nil {
+				p.logger.Warn("recv ping reply failed", zap.Error(err))
+			}
+		}
 	}
 }
 
