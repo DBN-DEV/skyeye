@@ -1,15 +1,19 @@
 package agent
 
 import (
+	"context"
+	"fmt"
 	"sync"
 
 	"go.uber.org/zap"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
 
 	"github.com/DBN-DEV/skyeye/agent/probe"
 	"github.com/DBN-DEV/skyeye/pb"
 )
 
-type manager struct {
+type Manager struct {
 	cli pb.ManagementService_StreamClient
 
 	msgCh chan *pb.AgentMessage
@@ -22,7 +26,40 @@ type manager struct {
 	}
 }
 
-func (m *manager) sendLoop() {
+func NewManager(target string) (*Manager, error) {
+	cc, err := grpc.NewClient(target, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	if err != nil {
+		return nil, fmt.Errorf("agent: grpc dial %s: %w", target, err)
+	}
+
+	cli := pb.NewManagementServiceClient(cc)
+	streamCli, err := cli.Stream(context.Background())
+	if err != nil {
+		return nil, fmt.Errorf("agent: create stream client: %w", err)
+	}
+
+	return &Manager{
+		cli:    streamCli,
+		msgCh:  make(chan *pb.AgentMessage, 100),
+		logger: zap.L().Named("manager"),
+
+		probeMu: struct {
+			mu     sync.Mutex
+			probes map[uint64]probe.ContinuousTask
+		}{
+			probes: make(map[uint64]probe.ContinuousTask),
+		},
+	}, nil
+}
+
+func (m *Manager) Run() {
+	go m.sendLoop()
+	go m.recv()
+
+	select {}
+}
+
+func (m *Manager) sendLoop() {
 	for msg := range m.msgCh {
 		if err := m.cli.Send(msg); err != nil {
 			m.logger.Error("send message", zap.Error(err))
@@ -31,7 +68,7 @@ func (m *manager) sendLoop() {
 	}
 }
 
-func (m *manager) recv() {
+func (m *Manager) recv() {
 	for {
 		msg, err := m.cli.Recv()
 		if err != nil {
@@ -43,7 +80,7 @@ func (m *manager) recv() {
 	}
 }
 
-func (m *manager) dispatchCtrlMsg(msg *pb.ControllerMessage) {
+func (m *Manager) dispatchCtrlMsg(msg *pb.ControllerMessage) {
 	switch msg.GetPayload().(type) {
 	case *pb.ControllerMessage_ContinuousPingJob:
 		m.runContinuousPingTask(msg.GetContinuousPingJob())
@@ -54,7 +91,7 @@ func (m *manager) dispatchCtrlMsg(msg *pb.ControllerMessage) {
 	}
 }
 
-func (m *manager) runContinuousPingTask(msg *pb.ContinuousPingJob) {
+func (m *Manager) runContinuousPingTask(msg *pb.ContinuousPingJob) {
 	p, err := probe.NewContinuousPingTask(msg, m.msgCh)
 	if err != nil {
 		m.logger.Error("new continuous ping task", zap.Error(err))
@@ -68,7 +105,7 @@ func (m *manager) runContinuousPingTask(msg *pb.ContinuousPingJob) {
 	go p.Run()
 }
 
-func (m *manager) cancelContinuousTask(msg *pb.CancelContinuousJob) {
+func (m *Manager) cancelContinuousTask(msg *pb.CancelContinuousJob) {
 	m.probeMu.mu.Lock()
 	defer m.probeMu.mu.Unlock()
 
