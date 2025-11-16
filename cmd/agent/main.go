@@ -4,12 +4,15 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/DBN-DEV/skyeye/agent"
 	"github.com/spf13/cobra"
+
+	"github.com/DBN-DEV/skyeye/agent"
+	"github.com/DBN-DEV/skyeye/version"
 )
 
 type option struct {
-	target string
+	target  string
+	agentID string
 }
 
 func (o *option) validate() error {
@@ -17,11 +20,16 @@ func (o *option) validate() error {
 		return errors.New("--target option is required")
 	}
 
+	if o.agentID == "" {
+		return errors.New("--agent-id option is required")
+	}
+
 	return nil
 }
 
 func (o *option) addFlags(cmd *cobra.Command) {
-	cmd.Flags().StringVar(&o.target, "target", "", "Management server target address")
+	cmd.Flags().StringVar(&o.target, "target", "", "management server target address")
+	cmd.Flags().StringVar(&o.agentID, "agent-id", "", "agent ID used to identify the agent")
 }
 
 func (o *option) run() error {
@@ -30,17 +38,17 @@ func (o *option) run() error {
 		return fmt.Errorf("could not create agent manager: %w", err)
 	}
 
-	manager.Run()
-	return nil
+	return manager.Run()
 }
 
 func NewCmd() *cobra.Command {
 	var opt option
 
 	cmd := &cobra.Command{
-		Use:   "skyeye-agent",
-		Short: "Skyeye Agent",
-		Long:  "Skyeye Agent connects to the management server and executes probe tasks.",
+		Version: version.Version,
+		Use:     "skyeye-agent",
+		Short:   "Skyeye Agent",
+		Long:    "Skyeye Agent connects to the management server and executes probe tasks.",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := opt.validate(); err != nil {
 				return err
@@ -59,6 +67,8 @@ func NewCmd() *cobra.Command {
 }
 
 func main() {
+	version.Println()
+
 	cmd := NewCmd()
 	if err := cmd.Execute(); err != nil {
 		fmt.Println("Error:", err)
