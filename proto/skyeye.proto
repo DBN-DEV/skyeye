@@ -37,12 +37,17 @@ message ControllerMessage {
   }
 }
 
+message NetworkInterface {
+  string name = 1;
+  repeated string addrs = 2;
+}
+
 message Register {
   string agent_id = 1;
   string version = 2;
   uint64 capabilities = 3;
   string hostname = 4;
-  map<string, IP> interface_ipaddr = 5;
+  repeated NetworkInterface network_interfaces = 5;
 }
 
 message Heartbeat {

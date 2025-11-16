@@ -3,7 +3,9 @@ package agent
 import (
 	"context"
 	"fmt"
+	"os"
 	"sync"
+	"time"
 
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
@@ -11,9 +13,12 @@ import (
 
 	"github.com/DBN-DEV/skyeye/agent/probe"
 	"github.com/DBN-DEV/skyeye/pb"
+	"github.com/DBN-DEV/skyeye/version"
 )
 
 type Manager struct {
+	agentID string
+
 	cli pb.ManagementService_StreamClient
 
 	msgCh chan *pb.AgentMessage
@@ -52,9 +57,14 @@ func NewManager(target string) (*Manager, error) {
 	}, nil
 }
 
-func (m *Manager) Run() {
+func (m *Manager) Run() error {
+	if err := m.register(); err != nil {
+		return fmt.Errorf("agent: register: %w", err)
+	}
+
+	go m.heartbeatLoop()
 	go m.sendLoop()
-	go m.recv()
+	go m.recvLoop()
 
 	select {}
 }
@@ -68,7 +78,7 @@ func (m *Manager) sendLoop() {
 	}
 }
 
-func (m *Manager) recv() {
+func (m *Manager) recvLoop() {
 	for {
 		msg, err := m.cli.Recv()
 		if err != nil {
@@ -114,4 +124,58 @@ func (m *Manager) cancelContinuousTask(msg *pb.CancelContinuousJob) {
 		p.Cancel()
 		delete(m.probeMu.probes, jobID)
 	}
+}
+
+func (m *Manager) register() error {
+	iface, err := networkInterfaces()
+	if err != nil {
+		return fmt.Errorf("agent: get network interfaces: %w", err)
+	}
+
+	hostname, err := os.Hostname()
+	if err != nil {
+		return fmt.Errorf("agent: get hostname: %w", err)
+	}
+
+	msg := &pb.AgentMessage{
+		Payload: &pb.AgentMessage_Register{Register: &pb.Register{
+			AgentId:           m.agentID,
+			Version:           version.Version,
+			Hostname:          hostname,
+			NetworkInterfaces: iface,
+		}},
+	}
+
+	if err := m.cli.Send(msg); err != nil {
+		return fmt.Errorf("agent: send register message: %w", err)
+	}
+
+	return nil
+}
+
+func (m *Manager) heartbeatLoop() {
+	ticker := time.NewTicker(10 * time.Second)
+	defer ticker.Stop()
+
+	for range ticker.C {
+		if err := m.heartbeat(); err != nil {
+			m.logger.Error("send heartbeat", zap.Error(err))
+		}
+	}
+}
+
+func (m *Manager) heartbeat() error {
+	now := time.Now().UnixMilli()
+
+	msg := &pb.AgentMessage{
+		Payload: &pb.AgentMessage_Heartbeat{Heartbeat: &pb.Heartbeat{
+			Timestamp: uint64(now),
+		}},
+	}
+
+	if err := m.cli.Send(msg); err != nil {
+		return fmt.Errorf("agent: send heartbeat: %w", err)
+	}
+
+	return nil
 }
