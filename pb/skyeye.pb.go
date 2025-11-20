@@ -7,12 +7,11 @@
 package pb
 
 import (
+	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
+	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 	reflect "reflect"
 	sync "sync"
 	unsafe "unsafe"
-
-	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
-	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 )
 
 const (
@@ -512,7 +511,7 @@ func (x *Register) GetNetworkInterfaces() []*NetworkInterface {
 
 type Heartbeat struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Timestamp     uint64                 `protobuf:"varint,1,opt,name=timestamp,proto3" json:"timestamp,omitempty"`
+	TimestampMill int64                  `protobuf:"varint,1,opt,name=timestampMill,proto3" json:"timestampMill,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -547,9 +546,9 @@ func (*Heartbeat) Descriptor() ([]byte, []int) {
 	return file_proto_skyeye_proto_rawDescGZIP(), []int{7}
 }
 
-func (x *Heartbeat) GetTimestamp() uint64 {
+func (x *Heartbeat) GetTimestampMill() int64 {
 	if x != nil {
-		return x.Timestamp
+		return x.TimestampMill
 	}
 	return 0
 }
@@ -693,9 +692,9 @@ const file_proto_skyeye_proto_rawDesc = "" +
 	"\aversion\x18\x02 \x01(\tR\aversion\x12\"\n" +
 	"\fcapabilities\x18\x03 \x01(\x04R\fcapabilities\x12\x1a\n" +
 	"\bhostname\x18\x04 \x01(\tR\bhostname\x12G\n" +
-	"\x12network_interfaces\x18\x05 \x03(\v2\x18.skyeye.NetworkInterfaceR\x11networkInterfaces\")\n" +
-	"\tHeartbeat\x12\x1c\n" +
-	"\ttimestamp\x18\x01 \x01(\x04R\ttimestamp\"\xd2\x01\n" +
+	"\x12network_interfaces\x18\x05 \x03(\v2\x18.skyeye.NetworkInterfaceR\x11networkInterfaces\"1\n" +
+	"\tHeartbeat\x12$\n" +
+	"\rtimestampMill\x18\x01 \x01(\x03R\rtimestampMill\"\xd2\x01\n" +
 	"\fAgentMessage\x12.\n" +
 	"\bregister\x18\x01 \x01(\v2\x10.skyeye.RegisterH\x00R\bregister\x121\n" +
 	"\theartbeat\x18\x02 \x01(\v2\x11.skyeye.HeartbeatH\x00R\theartbeat\x12T\n" +
