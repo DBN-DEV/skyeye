@@ -169,7 +169,7 @@ func (m *Manager) heartbeat() error {
 
 	msg := &pb.AgentMessage{
 		Payload: &pb.AgentMessage_Heartbeat{Heartbeat: &pb.Heartbeat{
-			Timestamp: uint64(now),
+			TimestampMill: now,
 		}},
 	}
 
