@@ -7,12 +7,14 @@ import (
 	"sync"
 	"time"
 
+	"github.com/google/uuid"
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 
 	"github.com/DBN-DEV/skyeye/agent/probe"
 	"github.com/DBN-DEV/skyeye/pb"
+	"github.com/DBN-DEV/skyeye/pkg/log"
 	"github.com/DBN-DEV/skyeye/version"
 )
 
@@ -32,6 +34,13 @@ type Manager struct {
 }
 
 func NewManager(target string) (*Manager, error) {
+	logger := log.With(zap.String("component", "agent-manager"))
+
+	agentID, err := readAgentID(logger)
+	if err != nil {
+		return nil, fmt.Errorf("agent: read agent ID: %w", err)
+	}
+
 	cc, err := grpc.NewClient(target, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
 		return nil, fmt.Errorf("agent: grpc dial %s: %w", target, err)
@@ -44,9 +53,10 @@ func NewManager(target string) (*Manager, error) {
 	}
 
 	return &Manager{
-		cli:    streamCli,
-		msgCh:  make(chan *pb.AgentMessage, 100),
-		logger: zap.L().Named("manager"),
+		agentID: agentID,
+		cli:     streamCli,
+		msgCh:   make(chan *pb.AgentMessage, 100),
+		logger:  logger,
 
 		probeMu: struct {
 			mu     sync.Mutex
@@ -67,6 +77,26 @@ func (m *Manager) Run() error {
 	go m.recvLoop()
 
 	select {}
+}
+
+func readAgentID(logger *zap.Logger) (string, error) {
+	_, err := os.Stat("./agent_id.txt")
+	if err != nil {
+		logger.Info("can not read ./agent_id.txt, generating a new agent ID", zap.Error(err))
+		agentID := uuid.NewString()
+		err = os.WriteFile("./agent_id.txt", []byte(agentID), 0644)
+		if err != nil {
+			return "", fmt.Errorf("can not write ./agent_id.txt")
+		}
+	}
+
+	agentID, err := os.ReadFile("./agent_id.txt")
+	if err != nil {
+		return "", fmt.Errorf("can not read ./agent_id.txt")
+	}
+	log.Info("using agent ID", zap.String("agent_id", string(agentID)))
+
+	return string(agentID), nil
 }
 
 func (m *Manager) sendLoop() {

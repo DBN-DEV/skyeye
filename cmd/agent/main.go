@@ -11,8 +11,7 @@ import (
 )
 
 type option struct {
-	target  string
-	agentID string
+	target string
 }
 
 func (o *option) validate() error {
@@ -20,16 +19,11 @@ func (o *option) validate() error {
 		return errors.New("--target option is required")
 	}
 
-	if o.agentID == "" {
-		return errors.New("--agent-id option is required")
-	}
-
 	return nil
 }
 
 func (o *option) addFlags(cmd *cobra.Command) {
 	cmd.Flags().StringVar(&o.target, "target", "", "management server target address")
-	cmd.Flags().StringVar(&o.agentID, "agent-id", "", "agent ID used to identify the agent")
 }
 
 func (o *option) run() error {
