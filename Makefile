@@ -30,3 +30,10 @@ build-agent:
 	@GO111MODULE=on CGO_ENABLED=0 go build -ldflags '$(LDFLAGS)' -o $(AGENT_BINARY_NAME) ./cmd/agent/main.go
 	@echo "Building Skyeye agent done"
 
+build-controller:
+	@echo "Building Skyeye controller binary..."
+	@echo "Version: $(BUILD_VERSION)"
+	@echo "Commit: $(BUILD_COMMIT)"
+	@echo "Date: $(DATE)"
+	@GO111MODULE=on CGO_ENABLED=0 go build -ldflags '$(LDFLAGS)' -o skyeye-controller ./cmd/controller/main.go
+	@echo "Building Skyeye controller done"
