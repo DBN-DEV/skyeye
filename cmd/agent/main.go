@@ -35,7 +35,7 @@ func (o *option) run() error {
 	return manager.Run()
 }
 
-func NewCmd() *cobra.Command {
+func newCmd() *cobra.Command {
 	var opt option
 
 	cmd := &cobra.Command{
@@ -63,7 +63,7 @@ func NewCmd() *cobra.Command {
 func main() {
 	version.Println()
 
-	cmd := NewCmd()
+	cmd := newCmd()
 	if err := cmd.Execute(); err != nil {
 		fmt.Println("Error:", err)
 	}

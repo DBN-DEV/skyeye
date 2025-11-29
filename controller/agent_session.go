@@ -6,10 +6,12 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/DBN-DEV/skyeye/controller/kpath"
-	"github.com/DBN-DEV/skyeye/pb"
 	clientv3 "go.etcd.io/etcd/client/v3"
 	"go.uber.org/zap"
+
+	"github.com/DBN-DEV/skyeye/controller/kpath"
+	"github.com/DBN-DEV/skyeye/pb"
+	"github.com/DBN-DEV/skyeye/pkg/log"
 )
 
 type AgentSession struct {
@@ -22,19 +24,11 @@ type AgentSession struct {
 	logger *zap.Logger
 }
 
-func newAgentSession(srv pb.ManagementService_StreamServer) *AgentSession {
-	return &AgentSession{srv: srv}
+func newAgentSession(srv pb.ManagementService_StreamServer, kv clientv3.KV) *AgentSession {
+	return &AgentSession{srv: srv, kv: kv, logger: log.L()}
 }
 
-func (as *AgentSession) Run() {
-	go func() {
-		if err := as.run(); err != nil {
-			as.logger.Error("run in background", zap.Error(err))
-		}
-	}()
-}
-
-func (as *AgentSession) run() error {
+func (as *AgentSession) Run() error {
 	if err := as.enroll(); err != nil {
 		return fmt.Errorf("controller: agent enroll %w", err)
 	}
