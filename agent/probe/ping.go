@@ -145,11 +145,11 @@ func (p pktConn) WriteTo(b []byte, addr netip.Addr) (int, error) {
 func (p pktConn) Close() error {
 	var err error
 	if e := p.ipv4.Close(); e != nil {
-		errors.Join(err, e)
+		err = errors.Join(err, e)
 	}
 
 	if e := p.ipv6.Close(); e != nil {
-		errors.Join(err, e)
+		err = errors.Join(err, e)
 	}
 
 	return err
