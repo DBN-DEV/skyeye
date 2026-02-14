@@ -21,6 +21,17 @@ import (
 	"github.com/DBN-DEV/skyeye/pkg/log"
 )
 
+const (
+	// tickDivisor controls timer precision: tick = timeout / tickDivisor,
+	// so the timing jitter is at most ~1/tickDivisor of the timeout.
+	tickDivisor = 10
+
+	// timeWheelSlots is the number of slots in the timer wheel.
+	// Wheel capacity = tick * (slots - 2) = timeout * (slots - 2) / tickDivisor.
+	// With 20 slots and divisor 10, capacity = 1.8 * timeout.
+	timeWheelSlots = 20
+)
+
 var _ ContinuousTask = (*PingJob)(nil)
 
 type PingJob struct {
@@ -60,14 +71,22 @@ func NewContinuousPingTask(msg *pb.ContinuousPingJob, resultCh chan<- *pb.AgentM
 	limit := float64(len(msg.GetDestinations())) / interval
 	limiter := rate.NewLimiter(rate.Limit(limit), 1)
 
+	timeout := time.Duration(msg.GetTimeoutMs()) * time.Millisecond
+	tick := timeout / tickDivisor
+	if tick == 0 {
+		tick = time.Millisecond
+	}
+
 	return &PingJob{
-		src:      src.String(), // can not support port for now
-		dsts:     dests,
-		timeout:  time.Duration(msg.GetTimeoutMs()) * time.Millisecond,
-		limiter:  limiter,
-		resultCh: resultCh,
-		stopCh:   make(chan struct{}),
-		logger:   log.With(zap.Uint64("job_id", msg.GetJobId())),
+		jobID:     msg.GetJobId(),
+		src:       src.String(), // can not support port for now
+		dsts:      dests,
+		timeout:   timeout,
+		limiter:   limiter,
+		resultCh:  resultCh,
+		stopCh:    make(chan struct{}),
+		timeWheel: newTimerWheel(tick, timeWheelSlots),
+		logger:    log.With(zap.Uint64("job_id", msg.GetJobId())),
 	}, nil
 }
 
