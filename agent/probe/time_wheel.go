@@ -50,17 +50,18 @@ func (s *slot) cancel(offset int, id int) error {
 
 func (s *slot) execute() {
 	s.mu.Lock()
-	defer s.mu.Unlock()
-
+	pending := make([]func(), 0, len(s.timers))
 	for i := range s.timers {
-		if s.timers[i].cancelled {
-			continue
+		if !s.timers[i].cancelled {
+			pending = append(pending, s.timers[i].callback)
 		}
-
-		s.timers[i].callback()
 	}
-
 	s.timers = s.timers[:0]
+	s.mu.Unlock()
+
+	for _, callback := range pending {
+		callback()
+	}
 }
 
 type timeWheelID []byte
@@ -86,8 +87,9 @@ func (id timeWheelID) TimerID() int {
 }
 
 type timerWheel struct {
-	ticker *time.Ticker
-	stop   chan struct{}
+	ticker   *time.Ticker
+	stop     chan struct{}
+	stopOnce sync.Once
 
 	tick    time.Duration
 	current atomic.Int64
@@ -107,7 +109,11 @@ func newTimerWheel(tick time.Duration, slotNum int) *timerWheel {
 }
 
 // Add adds a new timer to the timer wheel and returns the id.
-// The delay must be range of (0, tick*(SLOTS-2)], SLOTS is the slots number of time wheel
+// The delay must be in range (0, tick*(SLOTS-2)], SLOTS is the number of slots in the time wheel.
+//
+// Note: the actual firing time has up to 1 tick of jitter. run() advances the current pointer
+// before executing callbacks, so Add sees the already-advanced position. A timer with delay=N*tick
+// may fire after N+1 ticks in the worst case.
 func (tw *timerWheel) Add(delay time.Duration, callback func()) (timeWheelID, error) {
 	if delay <= 0 {
 		return nil, errors.New("probe: delay must be greater than zero")
@@ -137,7 +143,7 @@ func (tw *timerWheel) Cancel(id timeWheelID) error {
 	offset := id.Offset()
 	timerID := id.TimerID()
 
-	if slotNum < 0 || slotNum >= len(tw.slots) {
+	if slotNum >= len(tw.slots) {
 		return errors.New("probe: slot number out of range")
 	}
 
@@ -145,10 +151,12 @@ func (tw *timerWheel) Cancel(id timeWheelID) error {
 }
 
 func (tw *timerWheel) Stop() {
-	if tw.ticker != nil {
-		tw.ticker.Stop()
-	}
-	close(tw.stop)
+	tw.stopOnce.Do(func() {
+		if tw.ticker != nil {
+			tw.ticker.Stop()
+		}
+		close(tw.stop)
+	})
 }
 
 func (tw *timerWheel) run() {
@@ -160,6 +168,9 @@ func (tw *timerWheel) run() {
 			if next >= int64(len(tw.slots)) {
 				next = 0
 			}
+			// Advance current before execute so that Add() won't insert into the slot
+			// being executed. This trades 1 tick of extra latency for avoiding a race
+			// where a newly added timer is immediately cleared by the in-progress execute.
 			tw.current.Store(next)
 			tw.slots[current].execute()
 		case <-tw.stop:
