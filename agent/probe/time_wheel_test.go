@@ -161,7 +161,7 @@ func TestTimerWheel_Cancel(t *testing.T) {
 
 	// Cancel with invalid slot number
 	id := make([]byte, 24)
-	binary.BigEndian.PutUint64(id[0:8], 10) // Invalid slot number
+	binary.LittleEndian.PutUint64(id[0:8], 10) // Invalid slot number
 	err = tw.Cancel(id)
 	assert.Error(t, err)
 
@@ -231,8 +231,6 @@ func TestTimerWheel_run(t *testing.T) {
 				var executed bool
 				callback := func() { executed = true }
 				tw.slots[tc.jobSlot].add(callback)
-
-				go tw.run()
 				time.Sleep(tc.sleep)
 				tw.Stop()
 
