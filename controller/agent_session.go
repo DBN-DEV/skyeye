@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net"
 	"time"
 
 	clientv3 "go.etcd.io/etcd/client/v3"
@@ -42,6 +43,10 @@ func (as *AgentSession) Run() error {
 		case *pb.AgentMessage_Heartbeat:
 			if err := as.handleHeartbeat(msg.GetHeartbeat()); err != nil {
 				return fmt.Errorf("controller: agent handle heartbeat %w", err)
+			}
+		case *pb.AgentMessage_PingRoundResult:
+			if err := as.handlePingRoundResult(msg.GetPingRoundResult()); err != nil {
+				return fmt.Errorf("controller: agent handle ping round result %w", err)
 			}
 		default:
 			return fmt.Errorf("controller: unknown msg type %T", msg)
@@ -93,6 +98,22 @@ func (as *AgentSession) handleHeartbeat(msg *pb.Heartbeat) error {
 	if _, err := as.kv.Put(ctx, kpath.AgentHeartbeat(as.agentID), now.Format(time.RFC3339)); err != nil {
 		return fmt.Errorf("controller: enroll agent: put heartbeat: %w", err)
 	}
+
+	return nil
+}
+
+func (as *AgentSession) handlePingRoundResult(msg *pb.PingRoundResult) error {
+	as.logger.Debug(
+		"receive ping round result",
+		zap.Uint64("job_id", msg.GetJobId()),
+		zap.Uint64("round_id", msg.GetRoundId()),
+		zap.String("destination", net.IP(msg.GetDestination().GetSlice()).String()),
+		zap.Uint32("sent", msg.GetSent()),
+		zap.Uint32("recv", msg.GetRecv()),
+		zap.Uint32("timeout", msg.GetTimeout()),
+		zap.Uint32("send_error", msg.GetSendError()),
+		zap.Float64("loss_rate", msg.GetLossRate()),
+	)
 
 	return nil
 }

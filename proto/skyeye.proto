@@ -7,33 +7,40 @@ message IP {
   bytes slice = 1;
 }
 
-message ContinuousPingJob {
+message PingJob {
   uint64 job_id = 1;
   uint32 interval_ms = 2;
-  uint32 timeout_ms =3;
-  repeated IP destinations = 4;
+  uint32 timeout_ms = 3;  // per packet timeout
+  uint32 count = 4;       // packets per IP per interval
+  repeated IP destinations = 5;
   oneof source {
-    string port = 5;
-    IP ip = 6;
+    string port = 6;
+    IP ip = 7;
   }
 }
 
-message ContinuousPingResult {
+message PingRoundResult {
   uint64 job_id = 1;
-  IP destination = 2;
-  uint32 count = 3;
-  uint32 loss = 4;
-  repeated int64 rtt_nano = 5;
+  uint64 round_id = 2;
+  IP destination = 3;
+  uint32 sent = 4;
+  uint32 recv = 5;
+  uint32 timeout = 6;
+  uint32 send_error = 7;
+  double loss_rate = 8;
+  int64 min_rtt_nano = 9;
+  int64 avg_rtt_nano = 10;
+  int64 max_rtt_nano = 11;
 }
 
-message CancelContinuousJob {
+message CancelPingJob {
   uint64 job_id = 1;
 }
 
 message ControllerMessage {
   oneof payload {
-    CancelContinuousJob cancel_job = 1;
-    ContinuousPingJob continuous_ping_job = 2;
+    CancelPingJob cancel_ping_job = 1;
+    PingJob ping_job = 2;
   }
 }
 
@@ -58,7 +65,7 @@ message AgentMessage {
   oneof payload {
     Register register = 1;
     Heartbeat heartbeat = 2;
-    ContinuousPingResult continuous_ping_result = 3;
+    PingRoundResult ping_round_result = 3;
   }
 }
 

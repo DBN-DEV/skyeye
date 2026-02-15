@@ -122,19 +122,19 @@ func (m *Manager) recvLoop() {
 
 func (m *Manager) dispatchCtrlMsg(msg *pb.ControllerMessage) {
 	switch msg.GetPayload().(type) {
-	case *pb.ControllerMessage_ContinuousPingJob:
-		m.runContinuousPingTask(msg.GetContinuousPingJob())
-	case *pb.ControllerMessage_CancelJob:
-		m.cancelContinuousTask(msg.GetCancelJob())
+	case *pb.ControllerMessage_PingJob:
+		m.runPingTask(msg.GetPingJob())
+	case *pb.ControllerMessage_CancelPingJob:
+		m.cancelPingTask(msg.GetCancelPingJob())
 	default:
 		m.logger.Error("invalid ctrl message", zap.Any("msg", msg))
 	}
 }
 
-func (m *Manager) runContinuousPingTask(msg *pb.ContinuousPingJob) {
-	p, err := probe.NewContinuousPingTask(msg, m.msgCh)
+func (m *Manager) runPingTask(msg *pb.PingJob) {
+	p, err := probe.NewPingTask(msg, m.msgCh)
 	if err != nil {
-		m.logger.Error("new continuous ping task", zap.Error(err))
+		m.logger.Error("new ping task", zap.Error(err))
 		return
 	}
 
@@ -145,7 +145,7 @@ func (m *Manager) runContinuousPingTask(msg *pb.ContinuousPingJob) {
 	go p.Run()
 }
 
-func (m *Manager) cancelContinuousTask(msg *pb.CancelContinuousJob) {
+func (m *Manager) cancelPingTask(msg *pb.CancelPingJob) {
 	m.probeMu.mu.Lock()
 	defer m.probeMu.mu.Unlock()
 
