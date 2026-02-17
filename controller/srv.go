@@ -36,5 +36,19 @@ func (s *Srv) Stream(srv pb.ManagementService_StreamServer) error {
 
 	agentSess := newAgentSession(srv, s.etcdCli)
 
+	if err := agentSess.enroll(); err != nil {
+		return err
+	}
+
+	s.mu.Lock()
+	s.agents[agentSess.agentID] = agentSess
+	s.mu.Unlock()
+
+	defer func() {
+		s.mu.Lock()
+		delete(s.agents, agentSess.agentID)
+		s.mu.Unlock()
+	}()
+
 	return agentSess.Run()
 }
