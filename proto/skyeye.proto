@@ -21,16 +21,15 @@ message PingJob {
 
 message PingRoundResult {
   uint64 job_id = 1;
-  uint64 round_id = 2;
-  IP destination = 3;
-  uint32 sent = 4;
-  uint32 recv = 5;
-  uint32 timeout = 6;
-  uint32 send_error = 7;
-  double loss_rate = 8;
-  int64 min_rtt_nano = 9;
-  int64 avg_rtt_nano = 10;
-  int64 max_rtt_nano = 11;
+  IP destination = 2;
+  uint32 sent = 3;
+  uint32 recv = 4;
+  uint32 timeout = 5;
+  uint32 send_error = 6;
+  double loss_rate = 7;
+  int64 min_rtt_nano = 8;
+  int64 avg_rtt_nano = 9;
+  int64 max_rtt_nano = 10;
 }
 
 message CancelPingJob {

@@ -2,7 +2,7 @@
 // versions:
 // 	protoc-gen-go v1.36.11
 // 	protoc        v6.33.4
-// source: skyeye.proto
+// source: proto/skyeye.proto
 
 package pb
 
@@ -30,7 +30,7 @@ type IP struct {
 
 func (x *IP) Reset() {
 	*x = IP{}
-	mi := &file_skyeye_proto_msgTypes[0]
+	mi := &file_proto_skyeye_proto_msgTypes[0]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -42,7 +42,7 @@ func (x *IP) String() string {
 func (*IP) ProtoMessage() {}
 
 func (x *IP) ProtoReflect() protoreflect.Message {
-	mi := &file_skyeye_proto_msgTypes[0]
+	mi := &file_proto_skyeye_proto_msgTypes[0]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -55,7 +55,7 @@ func (x *IP) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use IP.ProtoReflect.Descriptor instead.
 func (*IP) Descriptor() ([]byte, []int) {
-	return file_skyeye_proto_rawDescGZIP(), []int{0}
+	return file_proto_skyeye_proto_rawDescGZIP(), []int{0}
 }
 
 func (x *IP) GetSlice() []byte {
@@ -83,7 +83,7 @@ type PingJob struct {
 
 func (x *PingJob) Reset() {
 	*x = PingJob{}
-	mi := &file_skyeye_proto_msgTypes[1]
+	mi := &file_proto_skyeye_proto_msgTypes[1]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -95,7 +95,7 @@ func (x *PingJob) String() string {
 func (*PingJob) ProtoMessage() {}
 
 func (x *PingJob) ProtoReflect() protoreflect.Message {
-	mi := &file_skyeye_proto_msgTypes[1]
+	mi := &file_proto_skyeye_proto_msgTypes[1]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -108,7 +108,7 @@ func (x *PingJob) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PingJob.ProtoReflect.Descriptor instead.
 func (*PingJob) Descriptor() ([]byte, []int) {
-	return file_skyeye_proto_rawDescGZIP(), []int{1}
+	return file_proto_skyeye_proto_rawDescGZIP(), []int{1}
 }
 
 func (x *PingJob) GetJobId() uint64 {
@@ -190,23 +190,22 @@ func (*PingJob_Ip) isPingJob_Source() {}
 type PingRoundResult struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	JobId         uint64                 `protobuf:"varint,1,opt,name=job_id,json=jobId,proto3" json:"job_id,omitempty"`
-	RoundId       uint64                 `protobuf:"varint,2,opt,name=round_id,json=roundId,proto3" json:"round_id,omitempty"`
-	Destination   *IP                    `protobuf:"bytes,3,opt,name=destination,proto3" json:"destination,omitempty"`
-	Sent          uint32                 `protobuf:"varint,4,opt,name=sent,proto3" json:"sent,omitempty"`
-	Recv          uint32                 `protobuf:"varint,5,opt,name=recv,proto3" json:"recv,omitempty"`
-	Timeout       uint32                 `protobuf:"varint,6,opt,name=timeout,proto3" json:"timeout,omitempty"`
-	SendError     uint32                 `protobuf:"varint,7,opt,name=send_error,json=sendError,proto3" json:"send_error,omitempty"`
-	LossRate      float64                `protobuf:"fixed64,8,opt,name=loss_rate,json=lossRate,proto3" json:"loss_rate,omitempty"`
-	MinRttNano    int64                  `protobuf:"varint,9,opt,name=min_rtt_nano,json=minRttNano,proto3" json:"min_rtt_nano,omitempty"`
-	AvgRttNano    int64                  `protobuf:"varint,10,opt,name=avg_rtt_nano,json=avgRttNano,proto3" json:"avg_rtt_nano,omitempty"`
-	MaxRttNano    int64                  `protobuf:"varint,11,opt,name=max_rtt_nano,json=maxRttNano,proto3" json:"max_rtt_nano,omitempty"`
+	Destination   *IP                    `protobuf:"bytes,2,opt,name=destination,proto3" json:"destination,omitempty"`
+	Sent          uint32                 `protobuf:"varint,3,opt,name=sent,proto3" json:"sent,omitempty"`
+	Recv          uint32                 `protobuf:"varint,4,opt,name=recv,proto3" json:"recv,omitempty"`
+	Timeout       uint32                 `protobuf:"varint,5,opt,name=timeout,proto3" json:"timeout,omitempty"`
+	SendError     uint32                 `protobuf:"varint,6,opt,name=send_error,json=sendError,proto3" json:"send_error,omitempty"`
+	LossRate      float64                `protobuf:"fixed64,7,opt,name=loss_rate,json=lossRate,proto3" json:"loss_rate,omitempty"`
+	MinRttNano    int64                  `protobuf:"varint,8,opt,name=min_rtt_nano,json=minRttNano,proto3" json:"min_rtt_nano,omitempty"`
+	AvgRttNano    int64                  `protobuf:"varint,9,opt,name=avg_rtt_nano,json=avgRttNano,proto3" json:"avg_rtt_nano,omitempty"`
+	MaxRttNano    int64                  `protobuf:"varint,10,opt,name=max_rtt_nano,json=maxRttNano,proto3" json:"max_rtt_nano,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
 func (x *PingRoundResult) Reset() {
 	*x = PingRoundResult{}
-	mi := &file_skyeye_proto_msgTypes[2]
+	mi := &file_proto_skyeye_proto_msgTypes[2]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -218,7 +217,7 @@ func (x *PingRoundResult) String() string {
 func (*PingRoundResult) ProtoMessage() {}
 
 func (x *PingRoundResult) ProtoReflect() protoreflect.Message {
-	mi := &file_skyeye_proto_msgTypes[2]
+	mi := &file_proto_skyeye_proto_msgTypes[2]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -231,19 +230,12 @@ func (x *PingRoundResult) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PingRoundResult.ProtoReflect.Descriptor instead.
 func (*PingRoundResult) Descriptor() ([]byte, []int) {
-	return file_skyeye_proto_rawDescGZIP(), []int{2}
+	return file_proto_skyeye_proto_rawDescGZIP(), []int{2}
 }
 
 func (x *PingRoundResult) GetJobId() uint64 {
 	if x != nil {
 		return x.JobId
-	}
-	return 0
-}
-
-func (x *PingRoundResult) GetRoundId() uint64 {
-	if x != nil {
-		return x.RoundId
 	}
 	return 0
 }
@@ -320,7 +312,7 @@ type CancelPingJob struct {
 
 func (x *CancelPingJob) Reset() {
 	*x = CancelPingJob{}
-	mi := &file_skyeye_proto_msgTypes[3]
+	mi := &file_proto_skyeye_proto_msgTypes[3]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -332,7 +324,7 @@ func (x *CancelPingJob) String() string {
 func (*CancelPingJob) ProtoMessage() {}
 
 func (x *CancelPingJob) ProtoReflect() protoreflect.Message {
-	mi := &file_skyeye_proto_msgTypes[3]
+	mi := &file_proto_skyeye_proto_msgTypes[3]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -345,7 +337,7 @@ func (x *CancelPingJob) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CancelPingJob.ProtoReflect.Descriptor instead.
 func (*CancelPingJob) Descriptor() ([]byte, []int) {
-	return file_skyeye_proto_rawDescGZIP(), []int{3}
+	return file_proto_skyeye_proto_rawDescGZIP(), []int{3}
 }
 
 func (x *CancelPingJob) GetJobId() uint64 {
@@ -368,7 +360,7 @@ type ControllerMessage struct {
 
 func (x *ControllerMessage) Reset() {
 	*x = ControllerMessage{}
-	mi := &file_skyeye_proto_msgTypes[4]
+	mi := &file_proto_skyeye_proto_msgTypes[4]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -380,7 +372,7 @@ func (x *ControllerMessage) String() string {
 func (*ControllerMessage) ProtoMessage() {}
 
 func (x *ControllerMessage) ProtoReflect() protoreflect.Message {
-	mi := &file_skyeye_proto_msgTypes[4]
+	mi := &file_proto_skyeye_proto_msgTypes[4]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -393,7 +385,7 @@ func (x *ControllerMessage) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ControllerMessage.ProtoReflect.Descriptor instead.
 func (*ControllerMessage) Descriptor() ([]byte, []int) {
-	return file_skyeye_proto_rawDescGZIP(), []int{4}
+	return file_proto_skyeye_proto_rawDescGZIP(), []int{4}
 }
 
 func (x *ControllerMessage) GetPayload() isControllerMessage_Payload {
@@ -447,7 +439,7 @@ type NetworkInterface struct {
 
 func (x *NetworkInterface) Reset() {
 	*x = NetworkInterface{}
-	mi := &file_skyeye_proto_msgTypes[5]
+	mi := &file_proto_skyeye_proto_msgTypes[5]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -459,7 +451,7 @@ func (x *NetworkInterface) String() string {
 func (*NetworkInterface) ProtoMessage() {}
 
 func (x *NetworkInterface) ProtoReflect() protoreflect.Message {
-	mi := &file_skyeye_proto_msgTypes[5]
+	mi := &file_proto_skyeye_proto_msgTypes[5]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -472,7 +464,7 @@ func (x *NetworkInterface) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use NetworkInterface.ProtoReflect.Descriptor instead.
 func (*NetworkInterface) Descriptor() ([]byte, []int) {
-	return file_skyeye_proto_rawDescGZIP(), []int{5}
+	return file_proto_skyeye_proto_rawDescGZIP(), []int{5}
 }
 
 func (x *NetworkInterface) GetName() string {
@@ -502,7 +494,7 @@ type Register struct {
 
 func (x *Register) Reset() {
 	*x = Register{}
-	mi := &file_skyeye_proto_msgTypes[6]
+	mi := &file_proto_skyeye_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -514,7 +506,7 @@ func (x *Register) String() string {
 func (*Register) ProtoMessage() {}
 
 func (x *Register) ProtoReflect() protoreflect.Message {
-	mi := &file_skyeye_proto_msgTypes[6]
+	mi := &file_proto_skyeye_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -527,7 +519,7 @@ func (x *Register) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Register.ProtoReflect.Descriptor instead.
 func (*Register) Descriptor() ([]byte, []int) {
-	return file_skyeye_proto_rawDescGZIP(), []int{6}
+	return file_proto_skyeye_proto_rawDescGZIP(), []int{6}
 }
 
 func (x *Register) GetAgentId() string {
@@ -574,7 +566,7 @@ type Heartbeat struct {
 
 func (x *Heartbeat) Reset() {
 	*x = Heartbeat{}
-	mi := &file_skyeye_proto_msgTypes[7]
+	mi := &file_proto_skyeye_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -586,7 +578,7 @@ func (x *Heartbeat) String() string {
 func (*Heartbeat) ProtoMessage() {}
 
 func (x *Heartbeat) ProtoReflect() protoreflect.Message {
-	mi := &file_skyeye_proto_msgTypes[7]
+	mi := &file_proto_skyeye_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -599,7 +591,7 @@ func (x *Heartbeat) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Heartbeat.ProtoReflect.Descriptor instead.
 func (*Heartbeat) Descriptor() ([]byte, []int) {
-	return file_skyeye_proto_rawDescGZIP(), []int{7}
+	return file_proto_skyeye_proto_rawDescGZIP(), []int{7}
 }
 
 func (x *Heartbeat) GetTimestampMill() int64 {
@@ -623,7 +615,7 @@ type AgentMessage struct {
 
 func (x *AgentMessage) Reset() {
 	*x = AgentMessage{}
-	mi := &file_skyeye_proto_msgTypes[8]
+	mi := &file_proto_skyeye_proto_msgTypes[8]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -635,7 +627,7 @@ func (x *AgentMessage) String() string {
 func (*AgentMessage) ProtoMessage() {}
 
 func (x *AgentMessage) ProtoReflect() protoreflect.Message {
-	mi := &file_skyeye_proto_msgTypes[8]
+	mi := &file_proto_skyeye_proto_msgTypes[8]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -648,7 +640,7 @@ func (x *AgentMessage) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AgentMessage.ProtoReflect.Descriptor instead.
 func (*AgentMessage) Descriptor() ([]byte, []int) {
-	return file_skyeye_proto_rawDescGZIP(), []int{8}
+	return file_proto_skyeye_proto_rawDescGZIP(), []int{8}
 }
 
 func (x *AgentMessage) GetPayload() isAgentMessage_Payload {
@@ -707,11 +699,11 @@ func (*AgentMessage_Heartbeat) isAgentMessage_Payload() {}
 
 func (*AgentMessage_PingRoundResult) isAgentMessage_Payload() {}
 
-var File_skyeye_proto protoreflect.FileDescriptor
+var File_proto_skyeye_proto protoreflect.FileDescriptor
 
-const file_skyeye_proto_rawDesc = "" +
+const file_proto_skyeye_proto_rawDesc = "" +
 	"\n" +
-	"\fskyeye.proto\x12\x06skyeye\"\x1a\n" +
+	"\x12proto/skyeye.proto\x12\x06skyeye\"\x1a\n" +
 	"\x02IP\x12\x14\n" +
 	"\x05slice\x18\x01 \x01(\fR\x05slice\"\xe4\x01\n" +
 	"\aPingJob\x12\x15\n" +
@@ -726,24 +718,23 @@ const file_skyeye_proto_rawDesc = "" +
 	"\x04port\x18\x06 \x01(\tH\x00R\x04port\x12\x1c\n" +
 	"\x02ip\x18\a \x01(\v2\n" +
 	".skyeye.IPH\x00R\x02ipB\b\n" +
-	"\x06source\"\xd5\x02\n" +
+	"\x06source\"\xba\x02\n" +
 	"\x0fPingRoundResult\x12\x15\n" +
-	"\x06job_id\x18\x01 \x01(\x04R\x05jobId\x12\x19\n" +
-	"\bround_id\x18\x02 \x01(\x04R\aroundId\x12,\n" +
-	"\vdestination\x18\x03 \x01(\v2\n" +
+	"\x06job_id\x18\x01 \x01(\x04R\x05jobId\x12,\n" +
+	"\vdestination\x18\x02 \x01(\v2\n" +
 	".skyeye.IPR\vdestination\x12\x12\n" +
-	"\x04sent\x18\x04 \x01(\rR\x04sent\x12\x12\n" +
-	"\x04recv\x18\x05 \x01(\rR\x04recv\x12\x18\n" +
-	"\atimeout\x18\x06 \x01(\rR\atimeout\x12\x1d\n" +
+	"\x04sent\x18\x03 \x01(\rR\x04sent\x12\x12\n" +
+	"\x04recv\x18\x04 \x01(\rR\x04recv\x12\x18\n" +
+	"\atimeout\x18\x05 \x01(\rR\atimeout\x12\x1d\n" +
 	"\n" +
-	"send_error\x18\a \x01(\rR\tsendError\x12\x1b\n" +
-	"\tloss_rate\x18\b \x01(\x01R\blossRate\x12 \n" +
-	"\fmin_rtt_nano\x18\t \x01(\x03R\n" +
+	"send_error\x18\x06 \x01(\rR\tsendError\x12\x1b\n" +
+	"\tloss_rate\x18\a \x01(\x01R\blossRate\x12 \n" +
+	"\fmin_rtt_nano\x18\b \x01(\x03R\n" +
 	"minRttNano\x12 \n" +
-	"\favg_rtt_nano\x18\n" +
-	" \x01(\x03R\n" +
+	"\favg_rtt_nano\x18\t \x01(\x03R\n" +
 	"avgRttNano\x12 \n" +
-	"\fmax_rtt_nano\x18\v \x01(\x03R\n" +
+	"\fmax_rtt_nano\x18\n" +
+	" \x01(\x03R\n" +
 	"maxRttNano\"&\n" +
 	"\rCancelPingJob\x12\x15\n" +
 	"\x06job_id\x18\x01 \x01(\x04R\x05jobId\"\x8d\x01\n" +
@@ -771,19 +762,19 @@ const file_skyeye_proto_rawDesc = "" +
 	"\x06Stream\x12\x14.skyeye.AgentMessage\x1a\x19.skyeye.ControllerMessage(\x010\x01B\aZ\x05./;pbb\x06proto3"
 
 var (
-	file_skyeye_proto_rawDescOnce sync.Once
-	file_skyeye_proto_rawDescData []byte
+	file_proto_skyeye_proto_rawDescOnce sync.Once
+	file_proto_skyeye_proto_rawDescData []byte
 )
 
-func file_skyeye_proto_rawDescGZIP() []byte {
-	file_skyeye_proto_rawDescOnce.Do(func() {
-		file_skyeye_proto_rawDescData = protoimpl.X.CompressGZIP(unsafe.Slice(unsafe.StringData(file_skyeye_proto_rawDesc), len(file_skyeye_proto_rawDesc)))
+func file_proto_skyeye_proto_rawDescGZIP() []byte {
+	file_proto_skyeye_proto_rawDescOnce.Do(func() {
+		file_proto_skyeye_proto_rawDescData = protoimpl.X.CompressGZIP(unsafe.Slice(unsafe.StringData(file_proto_skyeye_proto_rawDesc), len(file_proto_skyeye_proto_rawDesc)))
 	})
-	return file_skyeye_proto_rawDescData
+	return file_proto_skyeye_proto_rawDescData
 }
 
-var file_skyeye_proto_msgTypes = make([]protoimpl.MessageInfo, 9)
-var file_skyeye_proto_goTypes = []any{
+var file_proto_skyeye_proto_msgTypes = make([]protoimpl.MessageInfo, 9)
+var file_proto_skyeye_proto_goTypes = []any{
 	(*IP)(nil),                // 0: skyeye.IP
 	(*PingJob)(nil),           // 1: skyeye.PingJob
 	(*PingRoundResult)(nil),   // 2: skyeye.PingRoundResult
@@ -794,7 +785,7 @@ var file_skyeye_proto_goTypes = []any{
 	(*Heartbeat)(nil),         // 7: skyeye.Heartbeat
 	(*AgentMessage)(nil),      // 8: skyeye.AgentMessage
 }
-var file_skyeye_proto_depIdxs = []int32{
+var file_proto_skyeye_proto_depIdxs = []int32{
 	0,  // 0: skyeye.PingJob.destinations:type_name -> skyeye.IP
 	0,  // 1: skyeye.PingJob.ip:type_name -> skyeye.IP
 	0,  // 2: skyeye.PingRoundResult.destination:type_name -> skyeye.IP
@@ -813,20 +804,20 @@ var file_skyeye_proto_depIdxs = []int32{
 	0,  // [0:9] is the sub-list for field type_name
 }
 
-func init() { file_skyeye_proto_init() }
-func file_skyeye_proto_init() {
-	if File_skyeye_proto != nil {
+func init() { file_proto_skyeye_proto_init() }
+func file_proto_skyeye_proto_init() {
+	if File_proto_skyeye_proto != nil {
 		return
 	}
-	file_skyeye_proto_msgTypes[1].OneofWrappers = []any{
+	file_proto_skyeye_proto_msgTypes[1].OneofWrappers = []any{
 		(*PingJob_Port)(nil),
 		(*PingJob_Ip)(nil),
 	}
-	file_skyeye_proto_msgTypes[4].OneofWrappers = []any{
+	file_proto_skyeye_proto_msgTypes[4].OneofWrappers = []any{
 		(*ControllerMessage_CancelPingJob)(nil),
 		(*ControllerMessage_PingJob)(nil),
 	}
-	file_skyeye_proto_msgTypes[8].OneofWrappers = []any{
+	file_proto_skyeye_proto_msgTypes[8].OneofWrappers = []any{
 		(*AgentMessage_Register)(nil),
 		(*AgentMessage_Heartbeat)(nil),
 		(*AgentMessage_PingRoundResult)(nil),
@@ -835,17 +826,17 @@ func file_skyeye_proto_init() {
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
-			RawDescriptor: unsafe.Slice(unsafe.StringData(file_skyeye_proto_rawDesc), len(file_skyeye_proto_rawDesc)),
+			RawDescriptor: unsafe.Slice(unsafe.StringData(file_proto_skyeye_proto_rawDesc), len(file_proto_skyeye_proto_rawDesc)),
 			NumEnums:      0,
 			NumMessages:   9,
 			NumExtensions: 0,
 			NumServices:   1,
 		},
-		GoTypes:           file_skyeye_proto_goTypes,
-		DependencyIndexes: file_skyeye_proto_depIdxs,
-		MessageInfos:      file_skyeye_proto_msgTypes,
+		GoTypes:           file_proto_skyeye_proto_goTypes,
+		DependencyIndexes: file_proto_skyeye_proto_depIdxs,
+		MessageInfos:      file_proto_skyeye_proto_msgTypes,
 	}.Build()
-	File_skyeye_proto = out.File
-	file_skyeye_proto_goTypes = nil
-	file_skyeye_proto_depIdxs = nil
+	File_proto_skyeye_proto = out.File
+	file_proto_skyeye_proto_goTypes = nil
+	file_proto_skyeye_proto_depIdxs = nil
 }

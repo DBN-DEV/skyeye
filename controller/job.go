@@ -9,12 +9,13 @@ import (
 )
 
 type PingJobConfig struct {
-	JobID      uint64   `json:"job_id"`
-	IntervalMs uint32   `json:"interval_ms"`
-	TimeoutMs  uint32   `json:"timeout_ms"`
-	Count      uint32   `json:"count"`
-	Dests      []string `json:"destinations"`
-	SourcePort string   `json:"source_port"`
+	JobID      uint64            `json:"job_id"`
+	IntervalMs uint32            `json:"interval_ms"`
+	TimeoutMs  uint32            `json:"timeout_ms"`
+	Count      uint32            `json:"count"`
+	Dests      []string          `json:"destinations"`
+	SourcePort string            `json:"source_port"`
+	Tags       map[string]string `json:"tags,omitempty"`
 }
 
 func (c *PingJobConfig) ToProto() (*pb.PingJob, error) {
