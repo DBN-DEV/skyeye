@@ -1,0 +1,10 @@
+{
+  "addr": ":8080",
+  "tsdb": {
+    "backend": "influxdb",
+    "influxdb_server_url": "http://localhost:8086",
+    "influxdb_token": "my-token",
+    "influxdb_org": "my-org",
+    "influxdb_bucket": "skyeye"
+  }
+}

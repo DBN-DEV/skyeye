@@ -537,8 +537,7 @@ func (p *PingJob) buildRoundResultIfReadyLocked(roundID uint64, key string, stat
 	}
 
 	result := &pb.PingRoundResult{
-		JobId:   p.jobID,
-		RoundId: roundID,
+		JobId: p.jobID,
 		Destination: &pb.IP{
 			Slice: state.dst.AsSlice(),
 		},

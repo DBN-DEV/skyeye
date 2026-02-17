@@ -15,6 +15,7 @@ import (
 	"github.com/DBN-DEV/skyeye/controller/kpath"
 	"github.com/DBN-DEV/skyeye/pb"
 	"github.com/DBN-DEV/skyeye/pkg/log"
+	"github.com/DBN-DEV/skyeye/pkg/tsdb"
 )
 
 type AgentSession struct {
@@ -23,6 +24,9 @@ type AgentSession struct {
 	agentID string
 
 	etcdCli *clientv3.Client
+	writer  tsdb.Writer
+
+	jobTags map[uint64]map[string]string
 
 	sendCh chan *pb.ControllerMessage
 
@@ -32,11 +36,13 @@ type AgentSession struct {
 	logger *zap.Logger
 }
 
-func newAgentSession(srv pb.ManagementService_StreamServer, etcdCli *clientv3.Client) *AgentSession {
+func newAgentSession(srv pb.ManagementService_StreamServer, etcdCli *clientv3.Client, writer tsdb.Writer) *AgentSession {
 	ctx, cancel := context.WithCancel(context.Background())
 	return &AgentSession{
 		srv:     srv,
 		etcdCli: etcdCli,
+		writer:  writer,
+		jobTags: make(map[uint64]map[string]string),
 		sendCh:  make(chan *pb.ControllerMessage, 100),
 		ctx:     ctx,
 		cancel:  cancel,
@@ -135,6 +141,8 @@ func (as *AgentSession) handleJobPut(key, value []byte) {
 		Payload: &pb.ControllerMessage_PingJob{PingJob: job},
 	}
 
+	as.jobTags[cfg.JobID] = cfg.Tags
+
 	select {
 	case as.sendCh <- msg:
 		as.logger.Info("dispatched ping job", zap.Uint64("job_id", cfg.JobID))
@@ -149,6 +157,8 @@ func (as *AgentSession) handleJobDelete(key []byte) {
 		as.logger.Error("parse job ID from key", zap.String("key", string(key)), zap.Error(err))
 		return
 	}
+
+	delete(as.jobTags, jobID)
 
 	msg := &pb.ControllerMessage{
 		Payload: &pb.ControllerMessage_CancelPingJob{
@@ -212,17 +222,31 @@ func (as *AgentSession) handleHeartbeat(msg *pb.Heartbeat) error {
 }
 
 func (as *AgentSession) handlePingRoundResult(msg *pb.PingRoundResult) error {
-	as.logger.Debug(
-		"receive ping round result",
-		zap.Uint64("job_id", msg.GetJobId()),
-		zap.Uint64("round_id", msg.GetRoundId()),
-		zap.String("destination", net.IP(msg.GetDestination().GetSlice()).String()),
-		zap.Uint32("sent", msg.GetSent()),
-		zap.Uint32("recv", msg.GetRecv()),
-		zap.Uint32("timeout", msg.GetTimeout()),
-		zap.Uint32("send_error", msg.GetSendError()),
-		zap.Float64("loss_rate", msg.GetLossRate()),
-	)
+	tags := map[string]string{
+		"agent_id":    as.agentID,
+		"job_id":      strconv.FormatUint(msg.GetJobId(), 10),
+		"destination": net.IP(msg.GetDestination().GetSlice()).String(),
+	}
+	for k, v := range as.jobTags[msg.GetJobId()] {
+		tags[k] = v
+	}
+
+	p := tsdb.Point{
+		Measurement: "ping",
+		Tags:        tags,
+		Fields: map[string]any{
+			"sent":       msg.GetSent(),
+			"recv":       msg.GetRecv(),
+			"timeout":    msg.GetTimeout(),
+			"send_error": msg.GetSendError(),
+			"loss_rate":  msg.GetLossRate(),
+		},
+		Time: time.Now(),
+	}
+
+	if err := as.writer.Write(as.ctx, p); err != nil {
+		as.logger.Error("write ping round result", zap.Error(err))
+	}
 
 	return nil
 }

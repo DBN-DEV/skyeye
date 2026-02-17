@@ -161,7 +161,6 @@ func TestRoundResultTriggerByRecvAndTimeout(t *testing.T) {
 
 	result := msg.GetPingRoundResult()
 	assert.Equal(t, uint64(42), result.GetJobId())
-	assert.Equal(t, roundID, result.GetRoundId())
 	assert.Equal(t, dst.AsSlice(), result.GetDestination().GetSlice())
 	assert.Equal(t, uint32(2), result.GetSent())
 	assert.Equal(t, uint32(1), result.GetRecv())
