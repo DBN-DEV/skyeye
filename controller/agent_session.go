@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"net"
+	"path"
+	"strconv"
 	"time"
 
 	clientv3 "go.etcd.io/etcd/client/v3"
@@ -20,19 +22,33 @@ type AgentSession struct {
 
 	agentID string
 
-	kv clientv3.KV
+	etcdCli *clientv3.Client
+
+	sendCh chan *pb.ControllerMessage
+
+	ctx    context.Context
+	cancel context.CancelFunc
 
 	logger *zap.Logger
 }
 
-func newAgentSession(srv pb.ManagementService_StreamServer, kv clientv3.KV) *AgentSession {
-	return &AgentSession{srv: srv, kv: kv, logger: log.L()}
+func newAgentSession(srv pb.ManagementService_StreamServer, etcdCli *clientv3.Client) *AgentSession {
+	ctx, cancel := context.WithCancel(context.Background())
+	return &AgentSession{
+		srv:     srv,
+		etcdCli: etcdCli,
+		sendCh:  make(chan *pb.ControllerMessage, 100),
+		ctx:     ctx,
+		cancel:  cancel,
+		logger:  log.L(),
+	}
 }
 
 func (as *AgentSession) Run() error {
-	if err := as.enroll(); err != nil {
-		return fmt.Errorf("controller: agent enroll %w", err)
-	}
+	go as.sendLoop()
+	go as.loadAndWatchJobs()
+
+	defer as.cancel()
 
 	for {
 		msg, err := as.srv.Recv()
@@ -51,6 +67,99 @@ func (as *AgentSession) Run() error {
 		default:
 			return fmt.Errorf("controller: unknown msg type %T", msg)
 		}
+	}
+}
+
+func (as *AgentSession) sendLoop() {
+	for {
+		select {
+		case <-as.ctx.Done():
+			return
+		case msg := <-as.sendCh:
+			if err := as.srv.Send(msg); err != nil {
+				as.logger.Error("send message to agent", zap.Error(err))
+				return
+			}
+		}
+	}
+}
+
+func (as *AgentSession) loadAndWatchJobs() {
+	prefix := kpath.PingJobPrefix(as.agentID)
+
+	ctx, cancel := context.WithTimeout(as.ctx, 10*time.Second)
+	resp, err := as.etcdCli.Get(ctx, prefix, clientv3.WithPrefix())
+	cancel()
+	if err != nil {
+		as.logger.Error("load ping jobs from etcd", zap.Error(err))
+		return
+	}
+
+	for _, kv := range resp.Kvs {
+		as.handleJobPut(kv.Key, kv.Value)
+	}
+
+	as.logger.Info("loaded existing ping jobs", zap.Int("count", len(resp.Kvs)))
+
+	watchCh := as.etcdCli.Watch(as.ctx, prefix, clientv3.WithPrefix(), clientv3.WithRev(resp.Header.Revision+1))
+	for watchResp := range watchCh {
+		if watchResp.Err() != nil {
+			as.logger.Error("watch ping jobs", zap.Error(watchResp.Err()))
+			return
+		}
+		for _, ev := range watchResp.Events {
+			switch ev.Type {
+			case clientv3.EventTypePut:
+				as.handleJobPut(ev.Kv.Key, ev.Kv.Value)
+			case clientv3.EventTypeDelete:
+				as.handleJobDelete(ev.Kv.Key)
+			}
+		}
+	}
+}
+
+func (as *AgentSession) handleJobPut(key, value []byte) {
+	cfg, err := parsePingJobConfig(value)
+	if err != nil {
+		as.logger.Error("parse ping job config", zap.String("key", string(key)), zap.Error(err))
+		return
+	}
+
+	job, err := cfg.ToProto()
+	if err != nil {
+		as.logger.Error("convert ping job config to proto", zap.String("key", string(key)), zap.Error(err))
+		return
+	}
+
+	msg := &pb.ControllerMessage{
+		Payload: &pb.ControllerMessage_PingJob{PingJob: job},
+	}
+
+	select {
+	case as.sendCh <- msg:
+		as.logger.Info("dispatched ping job", zap.Uint64("job_id", cfg.JobID))
+	case <-as.ctx.Done():
+	}
+}
+
+func (as *AgentSession) handleJobDelete(key []byte) {
+	jobIDStr := path.Base(string(key))
+	jobID, err := strconv.ParseUint(jobIDStr, 10, 64)
+	if err != nil {
+		as.logger.Error("parse job ID from key", zap.String("key", string(key)), zap.Error(err))
+		return
+	}
+
+	msg := &pb.ControllerMessage{
+		Payload: &pb.ControllerMessage_CancelPingJob{
+			CancelPingJob: &pb.CancelPingJob{JobId: jobID},
+		},
+	}
+
+	select {
+	case as.sendCh <- msg:
+		as.logger.Info("dispatched cancel ping job", zap.Uint64("job_id", jobID))
+	case <-as.ctx.Done():
 	}
 }
 
@@ -77,7 +186,7 @@ func (as *AgentSession) enroll() error {
 	ctx, cancelFunc := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancelFunc()
 
-	if _, err := as.kv.Put(ctx, kpath.AgentAttr(as.agentID), string(bytes)); err != nil {
+	if _, err := as.etcdCli.Put(ctx, kpath.AgentAttr(as.agentID), string(bytes)); err != nil {
 		return fmt.Errorf("controller: enroll agent: marshal agent attribute: %w", err)
 	}
 
@@ -95,7 +204,7 @@ func (as *AgentSession) handleHeartbeat(msg *pb.Heartbeat) error {
 		as.logger.Info("agent time diff", zap.Duration("diff", diff))
 	}
 
-	if _, err := as.kv.Put(ctx, kpath.AgentHeartbeat(as.agentID), now.Format(time.RFC3339)); err != nil {
+	if _, err := as.etcdCli.Put(ctx, kpath.AgentHeartbeat(as.agentID), now.Format(time.RFC3339)); err != nil {
 		return fmt.Errorf("controller: enroll agent: put heartbeat: %w", err)
 	}
 
