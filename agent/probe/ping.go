@@ -30,8 +30,6 @@ const (
 	// Wheel capacity = tick * (slots - 2) = timeout * (slots - 2) / tickDivisor.
 	// With 20 slots and divisor 10, capacity = 1.8 * timeout.
 	timeWheelSlots = 20
-
-	recvReadTimeout = 200 * time.Millisecond
 )
 
 var _ ContinuousTask = (*PingJob)(nil)
@@ -39,8 +37,7 @@ var _ ContinuousTask = (*PingJob)(nil)
 type PingJob struct {
 	jobID uint64
 
-	src4 string
-	src6 string
+	sc *SharedConn
 
 	dsts4 []netip.Addr
 	dsts6 []netip.Addr
@@ -89,7 +86,7 @@ func (p *PingJob) Cancel() {
 	p.stopOnce.Do(func() { close(p.stopCh) })
 }
 
-func NewPingTask(msg *pb.PingJob, resultCh chan<- *pb.AgentMessage) (*PingJob, error) {
+func NewPingTask(msg *pb.PingJob, resultCh chan<- *pb.AgentMessage, sc *SharedConn) (*PingJob, error) {
 	dsts4 := make([]netip.Addr, 0, len(msg.Destinations))
 	dsts6 := make([]netip.Addr, 0, len(msg.Destinations))
 	for _, addr := range msg.GetDestinations() {
@@ -107,18 +104,11 @@ func NewPingTask(msg *pb.PingJob, resultCh chan<- *pb.AgentMessage) (*PingJob, e
 		return nil, errors.New("ping: no valid destination addresses")
 	}
 
-	src4 := "0.0.0.0"
-	src6 := "::"
-	if src := msg.GetIp(); src != nil {
-		srcAddr, ok := netip.AddrFromSlice(src.Slice)
-		if !ok {
-			return nil, fmt.Errorf("ping: invalid source address %s", src.String())
-		}
-		if srcAddr.Is4() {
-			src4 = srcAddr.String()
-		} else {
-			src6 = srcAddr.String()
-		}
+	if len(dsts4) > 0 && sc.IPv4() == nil {
+		return nil, errors.New("ping: shared conn has no IPv4 socket but job has IPv4 destinations")
+	}
+	if len(dsts6) > 0 && sc.IPv6() == nil {
+		return nil, errors.New("ping: shared conn has no IPv6 socket but job has IPv6 destinations")
 	}
 
 	interval := time.Duration(msg.GetIntervalMs()) * time.Millisecond
@@ -141,8 +131,7 @@ func NewPingTask(msg *pb.PingJob, resultCh chan<- *pb.AgentMessage) (*PingJob, e
 
 	return &PingJob{
 		jobID:     msg.GetJobId(),
-		src4:      src4,
-		src6:      src6,
+		sc:        sc,
 		dsts4:     dsts4,
 		dsts6:     dsts6,
 		interval:  interval,
@@ -167,79 +156,23 @@ func (p *PingJob) timeoutFn(token uint64) func() {
 }
 
 func (p *PingJob) Run() {
-	conn, err := newPktConn(len(p.dsts4) > 0, p.src4, len(p.dsts6) > 0, p.src6)
-	if err != nil {
-		p.logger.Error("ping job: create raw packet conn failed", zap.Error(err))
-		return
-	}
 	defer p.timeWheel.Stop()
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
 	var wg sync.WaitGroup
-	if conn.ipv4 != nil {
-		wg.Go(func() { p.sendLoop(ctx, conn.ipv4, p.dsts4) })
-		wg.Go(func() { p.recvLoop(ctx, conn.ipv4) })
+	if len(p.dsts4) > 0 {
+		wg.Go(func() { p.sendLoop(ctx, p.sc.IPv4(), p.dsts4) })
 	}
-	if conn.ipv6 != nil {
-		wg.Go(func() { p.sendLoop(ctx, conn.ipv6, p.dsts6) })
-		wg.Go(func() { p.recvLoop(ctx, conn.ipv6) })
+	if len(p.dsts6) > 0 {
+		wg.Go(func() { p.sendLoop(ctx, p.sc.IPv6(), p.dsts6) })
 	}
 
 	<-p.stopCh
 	cancel()
-	if err := conn.Close(); err != nil {
-		p.logger.Warn("ping job: close raw packet conn", zap.Error(err))
-	}
 	wg.Wait()
 	p.flushPendingOnStop()
-}
-
-type pktConn struct {
-	ipv4 net.PacketConn
-	ipv6 net.PacketConn
-}
-
-func (p pktConn) Close() error {
-	var err error
-	if p.ipv4 != nil {
-		if e := p.ipv4.Close(); e != nil {
-			err = errors.Join(err, e)
-		}
-	}
-	if p.ipv6 != nil {
-		if e := p.ipv6.Close(); e != nil {
-			err = errors.Join(err, e)
-		}
-	}
-	return err
-}
-
-func newPktConn(enable4 bool, src4 string, enable6 bool, src6 string) (pktConn, error) {
-	if !enable4 && !enable6 {
-		return pktConn{}, errors.New("probe: no destination family enabled")
-	}
-
-	var conn pktConn
-	if enable4 {
-		ipv4Conn, err := icmp.ListenPacket("ip4:icmp", src4)
-		if err != nil {
-			return pktConn{}, fmt.Errorf("probe: listen raw ipv4 icmp packet: %w", err)
-		}
-		conn.ipv4 = ipv4Conn
-	}
-
-	if enable6 {
-		ipv6Conn, err := icmp.ListenPacket("ip6:ipv6-icmp", src6)
-		if err != nil {
-			_ = conn.Close()
-			return pktConn{}, fmt.Errorf("probe: listen raw ipv6 icmp packet: %w", err)
-		}
-		conn.ipv6 = ipv6Conn
-	}
-
-	return conn, nil
 }
 
 func (p *PingJob) sendLoop(ctx context.Context, conn net.PacketConn, dsts []netip.Addr) {
@@ -313,17 +246,24 @@ func (p *PingJob) sendProbe(conn net.PacketConn, dst netip.Addr, roundID uint64)
 		return fmt.Errorf("probe: marshal icmp packet: %w", err)
 	}
 
+	p.putInFlight(token, &inFlightPacket{roundID: roundID, dst: dst})
+	p.sc.Register(token, func(sendTime time.Time) {
+		p.onRecv(token, sendTime)
+	})
+
 	if _, err := conn.WriteTo(b, &net.IPAddr{IP: dst.AsSlice()}); err != nil {
+		_, _ = p.takeInFlight(token)
+		p.sc.Unregister(token)
 		return fmt.Errorf("probe: send icmp packet: %w", err)
 	}
 
 	p.recordSent(roundID, dst)
-	p.putInFlight(token, &inFlightPacket{roundID: roundID, dst: dst})
 
 	id, err := p.timeWheel.Add(p.timeout, p.timeoutFn(token))
 	if err != nil {
 		p.logger.Error("failed to add timeout timer", zap.Uint64("token", token), zap.Error(err))
 		_, _ = p.takeInFlight(token)
+		p.sc.Unregister(token)
 		if msg := p.recordTimeoutAndBuildResult(roundID, dst); msg != nil {
 			p.emitResult(msg)
 		}
@@ -336,76 +276,30 @@ func (p *PingJob) sendProbe(conn net.PacketConn, dst netip.Addr, roundID uint64)
 	return nil
 }
 
-func (p *PingJob) recvLoop(ctx context.Context, conn net.PacketConn) {
-	buf := make([]byte, 1500)
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		default:
-		}
-
-		if err := conn.SetReadDeadline(time.Now().Add(recvReadTimeout)); err != nil {
-			p.logger.Warn("set read deadline failed", zap.Error(err))
-			return
-		}
-
-		n, addr, err := conn.ReadFrom(buf)
-		if err != nil {
-			if errors.Is(err, net.ErrClosed) {
-				return
-			}
-			var netErr net.Error
-			if errors.As(err, &netErr) && netErr.Timeout() {
-				continue
-			}
-			p.logger.Warn("recv ping reply failed", zap.Error(err))
-			continue
-		}
-
-		msg := p.handleRecv(addr, buf[:n])
-		if msg != nil {
-			p.emitResult(msg)
-		}
-	}
-}
-
-func (p *PingJob) handleRecv(addr net.Addr, raw []byte) *pb.AgentMessage {
-	ipAddr, err := addrToIP(addr)
-	if err != nil {
-		p.logger.Warn("invalid source address", zap.Error(err))
-		return nil
-	}
-
-	data, err := parsePkt(ipAddr, raw)
-	if err != nil {
-		p.logger.Debug("parse packet failed", zap.Error(err))
-		return nil
-	}
-
-	pl, err := unmarshalPayload(data)
-	if err != nil {
-		p.logger.Debug("unmarshal payload failed", zap.Error(err))
-		return nil
-	}
-
-	meta, ok := p.takeInFlight(pl.Token)
+func (p *PingJob) onRecv(token uint64, sendTime time.Time) {
+	meta, ok := p.takeInFlight(token)
 	if !ok {
-		return nil
+		return
 	}
+	p.sc.Unregister(token)
 	if meta.hasTimer {
 		_ = p.timeWheel.Cancel(meta.timerID)
 	}
 
-	rtt := time.Since(pl.Time)
+	rtt := time.Since(sendTime)
 	if rtt < 0 {
 		rtt = 0
 	}
-	if rtt > p.timeout {
-		return p.recordTimeoutAndBuildResult(meta.roundID, meta.dst)
-	}
 
-	return p.recordRecvAndBuildResult(meta.roundID, meta.dst, rtt)
+	var msg *pb.AgentMessage
+	if rtt > p.timeout {
+		msg = p.recordTimeoutAndBuildResult(meta.roundID, meta.dst)
+	} else {
+		msg = p.recordRecvAndBuildResult(meta.roundID, meta.dst, rtt)
+	}
+	if msg != nil {
+		p.emitResult(msg)
+	}
 }
 
 func (p *PingJob) handleTimeout(token uint64) *pb.AgentMessage {
@@ -413,6 +307,7 @@ func (p *PingJob) handleTimeout(token uint64) *pb.AgentMessage {
 	if !ok {
 		return nil
 	}
+	p.sc.Unregister(token)
 	return p.recordTimeoutAndBuildResult(meta.roundID, meta.dst)
 }
 
@@ -594,8 +489,9 @@ func (p *PingJob) takeInFlight(token uint64) (*inFlightPacket, bool) {
 }
 
 func (p *PingJob) flushPendingOnStop() {
-	metas := p.drainInFlight()
-	for _, meta := range metas {
+	tokens, metas := p.drainInFlight()
+	for i, meta := range metas {
+		p.sc.Unregister(tokens[i])
 		if meta.hasTimer {
 			_ = p.timeWheel.Cancel(meta.timerID)
 		}
@@ -609,16 +505,18 @@ func (p *PingJob) flushPendingOnStop() {
 	}
 }
 
-func (p *PingJob) drainInFlight() []*inFlightPacket {
+func (p *PingJob) drainInFlight() ([]uint64, []*inFlightPacket) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
+	tokens := make([]uint64, 0, len(p.inFlight))
 	metas := make([]*inFlightPacket, 0, len(p.inFlight))
 	for token, meta := range p.inFlight {
+		tokens = append(tokens, token)
 		metas = append(metas, meta)
 		delete(p.inFlight, token)
 	}
-	return metas
+	return tokens, metas
 }
 
 func (p *PingJob) closeAllRoundsAndCollectResults() []*pb.AgentMessage {
