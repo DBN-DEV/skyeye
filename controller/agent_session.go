@@ -7,6 +7,7 @@ import (
 	"net"
 	"path"
 	"strconv"
+	"sync"
 	"time"
 
 	clientv3 "go.etcd.io/etcd/client/v3"
@@ -26,7 +27,8 @@ type AgentSession struct {
 	etcdCli *clientv3.Client
 	writer  tsdb.Writer
 
-	jobTags map[uint64]map[string]string
+	jobTagsMu sync.RWMutex
+	jobTags   map[uint64]map[string]string
 
 	sendCh chan *pb.ControllerMessage
 
@@ -141,7 +143,9 @@ func (as *AgentSession) handleJobPut(key, value []byte) {
 		Payload: &pb.ControllerMessage_PingJob{PingJob: job},
 	}
 
+	as.jobTagsMu.Lock()
 	as.jobTags[cfg.JobID] = cfg.Tags
+	as.jobTagsMu.Unlock()
 
 	select {
 	case as.sendCh <- msg:
@@ -158,8 +162,6 @@ func (as *AgentSession) handleJobDelete(key []byte) {
 		return
 	}
 
-	delete(as.jobTags, jobID)
-
 	msg := &pb.ControllerMessage{
 		Payload: &pb.ControllerMessage_CancelPingJob{
 			CancelPingJob: &pb.CancelPingJob{JobId: jobID},
@@ -170,7 +172,18 @@ func (as *AgentSession) handleJobDelete(key []byte) {
 	case as.sendCh <- msg:
 		as.logger.Info("dispatched cancel ping job", zap.Uint64("job_id", jobID))
 	case <-as.ctx.Done():
+		return
 	}
+
+	go func() {
+		select {
+		case <-time.After(time.Minute):
+		case <-as.ctx.Done():
+		}
+		as.jobTagsMu.Lock()
+		delete(as.jobTags, jobID)
+		as.jobTagsMu.Unlock()
+	}()
 }
 
 func (as *AgentSession) enroll() error {
@@ -227,9 +240,11 @@ func (as *AgentSession) handlePingRoundResult(msg *pb.PingRoundResult) error {
 		"job_id":      strconv.FormatUint(msg.GetJobId(), 10),
 		"destination": net.IP(msg.GetDestination().GetSlice()).String(),
 	}
+	as.jobTagsMu.RLock()
 	for k, v := range as.jobTags[msg.GetJobId()] {
 		tags[k] = v
 	}
+	as.jobTagsMu.RUnlock()
 
 	p := tsdb.Point{
 		Measurement: "ping",
