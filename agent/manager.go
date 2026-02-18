@@ -113,7 +113,7 @@ func (m *Manager) recvLoop() {
 		msg, err := m.cli.Recv()
 		if err != nil {
 			m.logger.Error("recv message", zap.Error(err))
-			continue
+			return
 		}
 
 		m.dispatchCtrlMsg(msg)
