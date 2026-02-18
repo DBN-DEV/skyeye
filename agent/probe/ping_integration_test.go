@@ -3,6 +3,7 @@
 package probe
 
 import (
+	"context"
 	"net"
 	"testing"
 	"time"
@@ -14,6 +15,13 @@ import (
 )
 
 func TestPingJobIntegration(t *testing.T) {
+	sc, err := NewSharedConn()
+	require.NoError(t, err)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go sc.Run(ctx)
+
 	msg := &pb.PingJob{
 		JobId:      1,
 		IntervalMs: 2000,
@@ -25,7 +33,7 @@ func TestPingJobIntegration(t *testing.T) {
 	}
 
 	resultCh := make(chan *pb.AgentMessage, 100)
-	job, err := NewPingTask(msg, resultCh)
+	job, err := NewPingTask(msg, resultCh, sc)
 	require.NoError(t, err)
 
 	go job.Run()
@@ -36,8 +44,8 @@ func TestPingJobIntegration(t *testing.T) {
 		r := result.GetPingRoundResult()
 		require.NotNil(t, r)
 
-		t.Logf("round=%d sent=%d recv=%d timeout=%d loss=%.2f min=%s avg=%s max=%s",
-			r.RoundId, r.Sent, r.Recv, r.Timeout, r.LossRate,
+		t.Logf("sent=%d recv=%d timeout=%d loss=%.2f min=%s avg=%s max=%s",
+			r.Sent, r.Recv, r.Timeout, r.LossRate,
 			time.Duration(r.MinRttNano), time.Duration(r.AvgRttNano), time.Duration(r.MaxRttNano))
 
 		assert.Equal(t, uint32(5), r.Sent)

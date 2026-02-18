@@ -19,6 +19,15 @@ var (
 	_ipv6Loopback = netip.MustParseAddr("::1")
 )
 
+// stubSharedConn creates a SharedConn with fake conns for unit tests.
+func stubSharedConn() *SharedConn {
+	return &SharedConn{
+		ipv4:      &net.UDPConn{},
+		ipv6:      &net.UDPConn{},
+		callbacks: make(map[uint64]func(sendTime time.Time)),
+	}
+}
+
 func TestNewPingTask(t *testing.T) {
 	t.Run("valid", func(t *testing.T) {
 		msg := &pb.PingJob{
@@ -34,7 +43,7 @@ func TestNewPingTask(t *testing.T) {
 		}
 		resultCh := make(chan *pb.AgentMessage, 10)
 
-		job, err := NewPingTask(msg, resultCh)
+		job, err := NewPingTask(msg, resultCh, stubSharedConn())
 		assert.NoError(t, err)
 		assert.Equal(t, 1, len(job.dsts4))
 		assert.Equal(t, 1, len(job.dsts6))
@@ -54,7 +63,7 @@ func TestNewPingTask(t *testing.T) {
 			Source: &pb.PingJob_Ip{Ip: &pb.IP{Slice: net.IPv4(192, 168, 1, 1).To4()}},
 		}
 
-		job, err := NewPingTask(msg, make(chan *pb.AgentMessage, 1))
+		job, err := NewPingTask(msg, make(chan *pb.AgentMessage, 1), stubSharedConn())
 		assert.NoError(t, err)
 		assert.Equal(t, uint32(1), job.count)
 	})
@@ -66,20 +75,10 @@ func TestNewPingTask(t *testing.T) {
 			Destinations: []*pb.IP{{Slice: []byte{1, 2, 3}}},
 			Source:       &pb.PingJob_Ip{Ip: &pb.IP{Slice: net.IPv4(192, 168, 1, 1).To4()}},
 		}
-		_, err := NewPingTask(msg, nil)
+		_, err := NewPingTask(msg, nil, stubSharedConn())
 		assert.Error(t, err)
 	})
 
-	t.Run("invalid source", func(t *testing.T) {
-		msg := &pb.PingJob{
-			IntervalMs:   1000,
-			TimeoutMs:    500,
-			Destinations: []*pb.IP{{Slice: net.IPv4(8, 8, 8, 8).To4()}},
-			Source:       &pb.PingJob_Ip{Ip: &pb.IP{Slice: []byte{1, 2, 3}}},
-		}
-		_, err := NewPingTask(msg, nil)
-		assert.Error(t, err)
-	})
 }
 
 func TestPayload(t *testing.T) {

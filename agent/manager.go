@@ -25,6 +25,8 @@ type Manager struct {
 
 	msgCh chan *pb.AgentMessage
 
+	sharedConn *probe.SharedConn
+
 	logger *zap.Logger
 
 	probeMu struct {
@@ -41,6 +43,11 @@ func NewManager(target string) (*Manager, error) {
 		return nil, fmt.Errorf("agent: read agent ID: %w", err)
 	}
 
+	sc, err := probe.NewSharedConn()
+	if err != nil {
+		return nil, fmt.Errorf("agent: create shared conn: %w", err)
+	}
+
 	cc, err := grpc.NewClient(target, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
 		return nil, fmt.Errorf("agent: grpc dial %s: %w", target, err)
@@ -53,10 +60,11 @@ func NewManager(target string) (*Manager, error) {
 	}
 
 	return &Manager{
-		agentID: agentID,
-		cli:     streamCli,
-		msgCh:   make(chan *pb.AgentMessage, 100),
-		logger:  logger,
+		agentID:    agentID,
+		cli:        streamCli,
+		msgCh:      make(chan *pb.AgentMessage, 100),
+		sharedConn: sc,
+		logger:     logger,
 
 		probeMu: struct {
 			mu     sync.Mutex
@@ -72,6 +80,10 @@ func (m *Manager) Run() error {
 		return fmt.Errorf("agent: register: %w", err)
 	}
 
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	go m.sharedConn.Run(ctx)
 	go m.heartbeatLoop()
 	go m.sendLoop()
 	go m.recvLoop()
@@ -132,7 +144,7 @@ func (m *Manager) dispatchCtrlMsg(msg *pb.ControllerMessage) {
 }
 
 func (m *Manager) runPingTask(msg *pb.PingJob) {
-	p, err := probe.NewPingTask(msg, m.msgCh)
+	p, err := probe.NewPingTask(msg, m.msgCh, m.sharedConn)
 	if err != nil {
 		m.logger.Error("new ping task", zap.Error(err))
 		return
